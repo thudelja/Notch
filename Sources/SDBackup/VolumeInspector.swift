@@ -20,6 +20,9 @@ struct VolumeInfo: Identifiable, Hashable {
 
     var id: String { url.path }
 
+    /// Identifies this card (until it is reformatted) for import records and camera names.
+    var cardID: String { identifier ?? "\(name)-\(capacity ?? 0)" }
+
     /// Physically removable media: excludes the startup disk, network shares, disk images and
     /// external hard drives / SSDs (which macOS does not report as removable).
     var isRemovableMedia: Bool { isRemovable && isLocal && !isRootFileSystem && !isDiskImage }

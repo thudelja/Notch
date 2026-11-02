@@ -81,13 +81,33 @@ public struct BackupFailure: Sendable, Codable, Equatable {
     }
 }
 
+/// One file to copy, and the folder it should end up in (keeping its file name).
+public struct CopyItem: Sendable {
+    public let file: SourceFile
+    public let targetDirectory: URL
+
+    public init(file: SourceFile, targetDirectory: URL) {
+        self.file = file
+        self.targetDirectory = targetDirectory
+    }
+}
+
+/// A file that is now safely in the destination.
+public struct ProcessedFile: Sendable {
+    public let source: SourceFile
+    public let destination: URL
+    /// `false` when an identical copy was already there and nothing had to be copied.
+    public let wasCopied: Bool
+}
+
 public struct BackupResult: Sendable {
-    /// The card's folder inside the backup destination.
+    /// The folder the files were copied into (the card folder, or the destination root for imports).
     public let destination: URL
     public let filesCopied: Int
     public let bytesCopied: Int64
     public let filesAlreadyBackedUp: Int
     public let failures: [BackupFailure]
+    public let processedFiles: [ProcessedFile]
     public let startedAt: Date
     public let finishedAt: Date
 

@@ -1,16 +1,57 @@
 import AppKit
 import SDBackupCore
 
-/// Owns the app's state: connected cards, the backup queue, the running backup and the history.
+/// A confirmed import waiting to copy or copying.
+struct ImportJob: Identifiable {
+    let id = UUID()
+    let volume: VolumeInfo
+    let plan: ImportPlan
+    let projects: [ProjectInfo]
+    /// The folder shown in Finder from the history.
+    let primaryFolder: URL?
+
+    var title: String {
+        switch projects.count {
+        case 0: return volume.name
+        case 1: return projects[0].name
+        default: return "\(projects[0].name) + \(projects.count - 1) more"
+        }
+    }
+}
+
+/// Owns the app's state and the import flow:
+///
+/// 1. A card is inserted → it is read in the background (shoot days, cameras, what's new).
+/// 2. The user is notified and picks a project for each shoot day in the menu bar panel.
+/// 3. The files are copied into the project folders, verified, and recorded so they are not
+///    offered again.
 @MainActor
 final class AppModel: ObservableObject {
+    struct AnalysisProgress: Equatable {
+        var done: Int
+        var total: Int
+    }
+
+    enum CardStatus: Equatable {
+        case idle
+        case reading
+        case needsProject
+        case queued
+        case importing
+    }
+
     let settings: AppSettings
+    let library: LibraryStore
     let log: BackupLog
 
     @Published private(set) var connectedVolumes: [VolumeInfo] = []
-    @Published private(set) var queue: [VolumeInfo] = []
+    @Published private(set) var analyzing: VolumeInfo? = nil
+    @Published private(set) var analysisProgress: AnalysisProgress? = nil
+    @Published private(set) var drafts: [ImportDraft] = []
     @Published private(set) var active: ActiveBackup? = nil
+    @Published private(set) var importQueue: [ImportJob] = []
     @Published private(set) var history: [HistoryEntry] = []
+    @Published private var analysisQueue: [VolumeInfo] = []
     @Published var launchAtLogin: Bool {
         didSet {
             guard launchAtLogin != LoginItem.isEnabled else { return }
@@ -23,20 +64,22 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var isBusy: Bool { active != nil }
+    var isBusy: Bool { active != nil || analyzing != nil }
 
     private let notifier = Notifier()
     private let settingsWindow: SettingsWindowController
     private var observers: [NSObjectProtocol] = []
-    private var backupTask: Task<Void, Never>?
+    private var analysisTask: Task<Void, Never>?
+    private var copyTask: Task<Void, Never>?
     private var stopReason: String?
 
-    private static let historyKey = "backupHistory"
+    private static let historyKey = "importHistory"
     private static let historyLimit = 25
     private static let loginItemConfiguredKey = "loginItemConfigured"
 
     init() {
         settings = AppSettings()
+        library = LibraryStore()
         log = BackupLog()
         settingsWindow = SettingsWindowController()
         launchAtLogin = LoginItem.isEnabled
@@ -50,7 +93,7 @@ final class AppModel: ObservableObject {
         // Cards that were already inserted when the app started.
         if settings.autoBackupEnabled {
             for volume in connectedVolumes {
-                enqueue(volume)
+                prepareImport(volume)
             }
         }
     }
@@ -59,6 +102,14 @@ final class AppModel: ObservableObject {
 
     func refreshConnectedVolumes() {
         connectedVolumes = VolumeInspector.mountedVolumes().filter { isEligible($0) }
+    }
+
+    func status(of volume: VolumeInfo) -> CardStatus {
+        if active?.volume.id == volume.id { return .importing }
+        if importQueue.contains(where: { $0.volume.id == volume.id }) { return .queued }
+        if drafts.contains(where: { $0.volume.id == volume.id }) { return .needsProject }
+        if analyzing?.id == volume.id || analysisQueue.contains(where: { $0.id == volume.id }) { return .reading }
+        return .idle
     }
 
     private func isEligible(_ volume: VolumeInfo) -> Bool {
@@ -96,76 +147,208 @@ final class AppModel: ObservableObject {
         guard settings.autoBackupEnabled,
               let volume = connectedVolumes.first(where: { $0.id == url.path })
         else { return }
-        enqueue(volume)
+        prepareImport(volume)
     }
 
-    /// The user ejected the card in Finder: stop copying so the eject can go through.
+    /// The user ejected the card in Finder: stop reading or copying so the eject can go through.
     private func volumeWillUnmount(_ url: URL) {
-        queue.removeAll { $0.id == url.path }
-        if active?.volume.id == url.path {
-            stopReason = "Stopped because the card was ejected. Insert it again to finish the backup."
-            backupTask?.cancel()
-        }
+        stopWork(on: url.path, reason: "Stopped because the card was ejected. Insert it again to finish the import.")
     }
 
     private func volumeDidUnmount(_ url: URL) {
         connectedVolumes.removeAll { $0.id == url.path }
-        queue.removeAll { $0.id == url.path }
-        if active?.volume.id == url.path {
-            stopReason = stopReason ?? "The card was removed before the backup finished. Insert it again to finish."
-            backupTask?.cancel()
+        stopWork(on: url.path, reason: "The card was removed before the import finished. Insert it again to finish.")
+    }
+
+    private func stopWork(on volumeID: String, reason: String) {
+        analysisQueue.removeAll { $0.id == volumeID }
+        importQueue.removeAll { $0.volume.id == volumeID }
+        drafts.removeAll { $0.volume.id == volumeID }
+        if analyzing?.id == volumeID {
+            analysisTask?.cancel()
+        }
+        if active?.volume.id == volumeID {
+            stopReason = stopReason ?? reason
+            copyTask?.cancel()
         }
     }
 
-    // MARK: - Backups
+    // MARK: - Step 1: read the card
 
-    /// Queues a backup of `volume`. Used both automatically and from "Back Up" in the menu.
-    func enqueue(_ volume: VolumeInfo) {
-        guard active?.volume.id != volume.id, !queue.contains(where: { $0.id == volume.id }) else { return }
-        queue.append(volume)
-        startNextBackup()
+    /// Reads the card and then asks which project its files belong to. Called automatically when
+    /// a card is inserted (if Auto Import is on) and from "Import" in the menu.
+    func prepareImport(_ volume: VolumeInfo) {
+        guard status(of: volume) == .idle else { return }
+        analysisQueue.append(volume)
+        startNextAnalysis()
     }
 
-    func cancelBackup() {
-        stopReason = "Cancelled. Files copied so far were kept."
-        backupTask?.cancel()
+    func cancelAnalysis() {
+        analysisTask?.cancel()
     }
 
-    private func startNextBackup() {
-        while active == nil, !queue.isEmpty {
-            let volume = queue.removeFirst()
+    private func startNextAnalysis() {
+        guard analyzing == nil else { return }
+        while !analysisQueue.isEmpty {
+            let volume = analysisQueue.removeFirst()
             if FileManager.default.fileExists(atPath: volume.url.path) {
-                start(volume)
+                analyze(volume)
+                return
             }
         }
     }
 
-    private func start(_ volume: VolumeInfo) {
-        let backup = ActiveBackup(volume: volume)
-        let backupID = backup.id
+    private func analyze(_ volume: VolumeInfo) {
+        analyzing = volume
+        analysisProgress = nil
+        let ledger = library.ledger(forCard: volume.cardID)
         let source = volume.url
+        let volumeID = volume.id
+
+        analysisTask = Task.detached(priority: .userInitiated) { [self] in
+            let outcome: Result<CardAnalysis, Error>
+            do {
+                let analysis = try await CardAnalyzer().analyze(
+                    source: source,
+                    isAlreadyImported: { ledger.contains($0) },
+                    progress: { done, total in
+                        guard done % 20 == 0 || done == total else { return }
+                        Task { @MainActor in self.updateAnalysisProgress(done: done, total: total, volumeID: volumeID) }
+                    }
+                )
+                outcome = .success(analysis)
+            } catch {
+                outcome = .failure(error)
+            }
+            await self.analysisFinished(volume, outcome: outcome)
+        }
+    }
+
+    private func updateAnalysisProgress(done: Int, total: Int, volumeID: String) {
+        guard analyzing?.id == volumeID else { return }
+        analysisProgress = AnalysisProgress(done: done, total: total)
+    }
+
+    private func analysisFinished(_ volume: VolumeInfo, outcome: Result<CardAnalysis, Error>) {
+        guard analyzing?.id == volume.id else { return }
+        analyzing = nil
+        analysisProgress = nil
+        analysisTask = nil
+
+        switch outcome {
+        case .success(let analysis) where analysis.isEmpty:
+            let detail = analysis.alreadyImported > 0
+                ? "All \(Format.count(analysis.alreadyImported, "file")) on it were imported before."
+                : "It has no photos, videos or audio."
+            log.write("“\(volume.name)”: nothing new. \(detail)")
+            notify("Nothing new on “\(volume.name)”", detail)
+            if settings.ejectWhenDone, analysis.alreadyImported > 0 {
+                eject(volume, announce: true)
+            }
+        case .success(let analysis):
+            let draft = makeDraft(for: volume, analysis: analysis)
+            drafts.append(draft)
+            log.write("Read “\(volume.name)”: \(analysis.items.count) new files on \(draft.days.count) shoot day(s), \(analysis.alreadyImported) imported before")
+            notify(
+                "“\(volume.name)” is ready to import",
+                "\(Format.count(draft.days.count, "shoot day")), \(Format.count(analysis.items.count, "new file")). Click the SD card icon in the menu bar to choose the project."
+            )
+        case .failure(let error):
+            guard !(error is CancellationError) else { break }
+            let message = error.localizedDescription
+            log.write("Couldn’t read “\(volume.name)”: \(message)")
+            record(.failed, title: volume.name, volume: volume, result: nil, folder: nil, message: message)
+            notify("Couldn’t read “\(volume.name)”", message)
+        }
+        startNextAnalysis()
+    }
+
+    private func makeDraft(for volume: VolumeInfo, analysis: CardAnalysis) -> ImportDraft {
+        var names: [String: String] = [:]
+        for model in analysis.cameraModels {
+            names[model] = library.cameraName(forModel: model, make: analysis.make(forModel: model))
+        }
+        if analysis.hasUnknownCamera {
+            names[""] = library.cameraName(forCard: volume.cardID)
+                ?? (analysis.cameraModels.count == 1 ? names[analysis.cameraModels[0]] : nil)
+                ?? "Camera"
+        }
+        return ImportDraft(
+            volume: volume,
+            analysis: analysis,
+            recentProjects: library.recentProjects(limit: 3),
+            cameraNames: names
+        )
+    }
+
+    // MARK: - Step 2: the user picks projects
+
+    /// "Not Now": forget the answers; the card can be imported later from the menu.
+    func dismiss(_ draft: ImportDraft) {
+        drafts.removeAll { $0.id == draft.id }
+    }
+
+    func startImport(_ draft: ImportDraft) {
+        guard draft.isReady else { return }
+        let projects = draft.resolvedProjects(store: library, rootPath: settings.destinationURL.path)
+        let plan = ProjectLayout.plan(items: draft.analysis.items, projects: projects) { draft.cameraName(for: $0) }
+        library.rememberCameraNames(draft.cameraNames, cardID: draft.volume.cardID)
+        drafts.removeAll { $0.id == draft.id }
+        guard !plan.items.isEmpty else { return }
+
+        let used = Array(Set(projects.values)).sorted { $0.startDay < $1.startDay }
+        var primaryFolder: URL?
+        if let first = used.first {
+            let hasPhotos = draft.analysis.items.contains { $0.kind == .photo && projects[$0.day]?.id == first.id }
+            primaryFolder = hasPhotos ? ProjectLayout.photoFolder(for: first) : ProjectLayout.videoFolder(for: first)
+        }
+
+        importQueue.append(ImportJob(volume: draft.volume, plan: plan, projects: used, primaryFolder: primaryFolder))
+        startNextImport()
+    }
+
+    // MARK: - Step 3: copy
+
+    func cancelImport() {
+        stopReason = "Cancelled. Files copied so far were kept."
+        copyTask?.cancel()
+    }
+
+    private func startNextImport() {
+        while active == nil, !importQueue.isEmpty {
+            let job = importQueue.removeFirst()
+            if FileManager.default.fileExists(atPath: job.volume.url.path) {
+                run(job)
+            } else {
+                notify("Couldn’t import “\(job.volume.name)”", "The card was removed. Insert it again to import.")
+            }
+        }
+    }
+
+    private func run(_ job: ImportJob) {
+        let backup = ActiveBackup(volume: job.volume, title: job.title)
+        let backupID = backup.id
         let destination = settings.destinationURL
-        let folderName = volume.backupFolderName
         let options = BackupOptions(verifyCopies: settings.verifyCopies)
 
         active = backup
         stopReason = nil
-        log.write("Started backing up “\(volume.name)” to \(destination.path)")
-        notify("Backing up “\(volume.name)”", "Keep the card inserted until the backup is finished.")
+        log.write("Importing “\(job.volume.name)” into \(job.title): \(Format.count(job.plan.fileCount, "file")), \(Format.bytes(job.plan.byteCount))")
 
-        backupTask = Task.detached(priority: .userInitiated) { [self] in
+        copyTask = Task.detached(priority: .userInitiated) { [self] in
             let activity = ProcessInfo.processInfo.beginActivity(
                 options: [.userInitiated, .idleSystemSleepDisabled],
-                reason: "Backing up an SD card"
+                reason: "Importing an SD card"
             )
             defer { ProcessInfo.processInfo.endActivity(activity) }
 
             let outcome: Result<BackupResult, Error>
             do {
-                let result = try BackupEngine(options: options).run(
-                    source: source,
-                    destinationRoot: destination,
-                    cardFolderName: folderName
+                let result = try BackupEngine(options: options).copy(
+                    job.plan.items,
+                    from: job.volume.url,
+                    to: destination,
+                    createFolders: job.plan.foldersToCreate
                 ) { progress in
                     Task { @MainActor in self.update(progress, backupID: backupID) }
                 }
@@ -173,7 +356,7 @@ final class AppModel: ObservableObject {
             } catch {
                 outcome = .failure(error)
             }
-            await self.finish(backupID: backupID, volume: volume, outcome: outcome)
+            await self.importFinished(job, backupID: backupID, outcome: outcome)
         }
     }
 
@@ -186,51 +369,55 @@ final class AppModel: ObservableObject {
         active = backup
     }
 
-    private func finish(backupID: UUID, volume: VolumeInfo, outcome: Result<BackupResult, Error>) {
+    private func importFinished(_ job: ImportJob, backupID: UUID, outcome: Result<BackupResult, Error>) {
         guard active?.id == backupID else { return }
         active = nil
-        backupTask = nil
+        copyTask = nil
 
         switch outcome {
         case .success(let result):
-            backupSucceeded(result, volume: volume)
+            var ledger = library.ledger(forCard: job.volume.cardID)
+            for file in result.processedFiles {
+                ledger.record(file.source, destination: file.destination)
+            }
+            library.saveLedger(ledger, forCard: job.volume.cardID)
+            library.markUsed(job.projects)
+            importSucceeded(job, result: result)
         case .failure(let error):
-            backupFailed(error, volume: volume)
+            importFailed(job, error: error)
         }
         stopReason = nil
-        startNextBackup()
+        startNextImport()
     }
 
-    private func backupSucceeded(_ result: BackupResult, volume: VolumeInfo) {
-        let copied = "\(Format.count(result.filesCopied, "new file")) (\(Format.bytes(result.bytesCopied)))"
-        var logLines = [
-            "Finished “\(volume.name)”: \(copied) copied, \(result.filesAlreadyBackedUp) already backed up, "
-                + "\(result.failures.count) failed → \(result.destination.path)",
+    private func importSucceeded(_ job: ImportJob, result: BackupResult) {
+        let copied = "\(Format.count(result.filesCopied, "file")) (\(Format.bytes(result.bytesCopied)))"
+        var lines = [
+            "Imported “\(job.volume.name)” into \(job.title): \(copied) copied, "
+                + "\(result.filesAlreadyBackedUp) already there, \(result.failures.count) failed",
         ]
-        logLines += result.failures.prefix(500).map { "    FAILED \($0.relativePath): \($0.message)" }
-        log.write(logLines)
+        lines += job.projects.map { "    \($0.name): \(ProjectLayout.photoFolder(for: $0).path) | \(ProjectLayout.videoFolder(for: $0).path)" }
+        lines += result.failures.prefix(500).map { "    FAILED \($0.relativePath): \($0.message)" }
+        log.write(lines)
 
         if result.isComplete {
-            record(.completed, volume: volume, result: result)
-            notify(
-                "Backup complete",
-                result.filesCopied == 0
-                    ? "Everything on “\(volume.name)” was already backed up."
-                    : "Copied \(copied) from “\(volume.name)”."
-            )
-            if settings.ejectWhenDone {
-                eject(volume, announce: true)
+            record(.completed, title: job.title, volume: job.volume, result: result, folder: job.primaryFolder)
+            notify("Import complete", "Copied \(copied) from “\(job.volume.name)” into \(job.title).")
+            let moreForThisCard = importQueue.contains { $0.volume.id == job.volume.id }
+                || drafts.contains { $0.volume.id == job.volume.id }
+            if settings.ejectWhenDone, !moreForThisCard {
+                eject(job.volume, announce: true)
             }
         } else {
-            record(.completedWithErrors, volume: volume, result: result)
+            record(.completedWithErrors, title: job.title, volume: job.volume, result: result, folder: job.primaryFolder)
             notify(
-                "Backup finished with problems",
-                "Copied \(copied) from “\(volume.name)”, but \(Format.count(result.failures.count, "file")) couldn’t be copied. Open the log for details."
+                "Import finished with problems",
+                "Copied \(copied) into \(job.title), but \(Format.count(result.failures.count, "file")) couldn’t be copied. Open the log for details."
             )
         }
     }
 
-    private func backupFailed(_ error: Error, volume: VolumeInfo) {
+    private func importFailed(_ job: ImportJob, error: Error) {
         let outcome: HistoryEntry.Outcome
         let message: String
         if error is CancellationError {
@@ -238,24 +425,31 @@ final class AppModel: ObservableObject {
             message = stopReason ?? "Cancelled. Files copied so far were kept."
         } else if (error as? BackupError) == .sourceDisappeared {
             outcome = .failed
-            message = "The card was removed before the backup finished. Insert it again to finish."
+            message = "The card was removed before the import finished. Insert it again to finish."
         } else {
             outcome = .failed
             message = error.localizedDescription
         }
 
-        log.write("Backup of “\(volume.name)” stopped: \(message)")
-        record(outcome, volume: volume, result: nil, message: message)
-        notify(outcome == .cancelled ? "Backup stopped" : "Backup failed", message)
+        log.write("Import of “\(job.volume.name)” into \(job.title) stopped: \(message)")
+        record(outcome, title: job.title, volume: job.volume, result: nil, folder: job.primaryFolder, message: message)
+        notify(outcome == .cancelled ? "Import stopped" : "Import failed", message)
     }
 
     // MARK: - History
 
-    private func record(_ outcome: HistoryEntry.Outcome, volume: VolumeInfo, result: BackupResult?, message: String? = nil) {
-        let folder = result?.destination
-            ?? settings.destinationURL.appendingPathComponent(BackupEngine.sanitizedFolderName(volume.backupFolderName))
+    private func record(
+        _ outcome: HistoryEntry.Outcome,
+        title: String,
+        volume: VolumeInfo,
+        result: BackupResult?,
+        folder: URL?,
+        message: String? = nil
+    ) {
         let entry = HistoryEntry(
+            title: title,
             cardName: volume.name,
+            cardID: volume.cardID,
             date: Date(),
             outcome: outcome,
             filesCopied: result?.filesCopied ?? 0,
@@ -263,7 +457,7 @@ final class AppModel: ObservableObject {
             filesAlreadyBackedUp: result?.filesAlreadyBackedUp ?? 0,
             failedFiles: result?.failures.count ?? 0,
             message: message,
-            folderPath: folder.path
+            folderPath: folder?.path
         )
         history.insert(entry, at: 0)
         if history.count > Self.historyLimit {
@@ -281,11 +475,10 @@ final class AppModel: ObservableObject {
         return entries
     }
 
-    /// The most recent complete backup of this card, matched by its backup folder.
-    func lastBackup(of volume: VolumeInfo) -> HistoryEntry? {
-        let folderName = BackupEngine.sanitizedFolderName(volume.backupFolderName)
-        return history.first { entry in
-            entry.outcome == .completed && URL(fileURLWithPath: entry.folderPath).lastPathComponent == folderName
+    /// The most recent successful import from this card.
+    func lastImport(of volume: VolumeInfo) -> HistoryEntry? {
+        history.first { entry in
+            entry.cardID == volume.cardID && (entry.outcome == .completed || entry.outcome == .completedWithErrors)
         }
     }
 
@@ -319,14 +512,12 @@ final class AppModel: ObservableObject {
 
     func revealDestination() {
         let url = settings.destinationURL
-        let fileManager = FileManager.default
-        _ = NSWorkspace.shared.open(fileManager.fileExists(atPath: url.path) ? url : url.deletingLastPathComponent())
+        _ = NSWorkspace.shared.open(FileManager.default.fileExists(atPath: url.path) ? url : url.deletingLastPathComponent())
     }
 
     func reveal(_ entry: HistoryEntry) {
-        let url = URL(fileURLWithPath: entry.folderPath, isDirectory: true)
-        if FileManager.default.fileExists(atPath: url.path) {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        if let path = entry.folderPath, FileManager.default.fileExists(atPath: path) {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path, isDirectory: true)])
         } else {
             revealDestination()
         }
@@ -345,7 +536,8 @@ final class AppModel: ObservableObject {
 
     func chooseDestination() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Backup Folder"
+        panel.title = "Choose Projects Folder"
+        panel.message = "Year folders (2026, 2027, …) with Photo and Video inside are created here."
         panel.prompt = "Choose"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -358,16 +550,32 @@ final class AppModel: ObservableObject {
         refreshConnectedVolumes()
     }
 
+    func forgetImportedFiles() {
+        let alert = NSAlert()
+        alert.messageText = "Forget which files were imported?"
+        alert.informativeText = "Every file on every card will be offered for import again. Files that are already in a project folder are still skipped when you pick the same project."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Forget")
+        AppActivation.bringToFront()
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        library.forgetImports()
+    }
+
+    func forgetCameraNames() {
+        library.forgetCameraNames()
+    }
+
     func quit() {
         if isBusy {
             let alert = NSAlert()
-            alert.messageText = "A backup is in progress"
-            alert.informativeText = "If you quit now, files copied so far are kept and the rest are copied the next time the card is inserted."
-            alert.addButton(withTitle: "Keep Backing Up")
+            alert.messageText = active != nil ? "An import is in progress" : "A card is being read"
+            alert.informativeText = "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted."
+            alert.addButton(withTitle: "Keep Going")
             alert.addButton(withTitle: "Quit")
             AppActivation.bringToFront()
             guard alert.runModal() == .alertSecondButtonReturn else { return }
-            backupTask?.cancel()
+            copyTask?.cancel()
+            analysisTask?.cancel()
         }
         NSApp.terminate(nil)
     }
@@ -379,7 +587,7 @@ final class AppModel: ObservableObject {
         notifier.post(title: title, body: body)
     }
 
-    /// An auto-backup app only works while it's running, so start at login by default once it's
+    /// An auto-import app only works while it's running, so start at login by default once it's
     /// installed in /Applications. The user can turn this off in Settings.
     private func configureLoginItemOnFirstLaunch() {
         let defaults = UserDefaults.standard

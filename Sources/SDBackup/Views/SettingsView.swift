@@ -7,7 +7,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Backup folder") {
+            Section("Projects folder") {
                 HStack {
                     Image(systemName: "folder.fill")
                         .foregroundStyle(.secondary)
@@ -17,14 +17,15 @@ struct SettingsView: View {
                     Spacer()
                     Button("Change…") { model.chooseDestination() }
                 }
-                Text("Each card is copied into its own folder here, named after the card. Re-inserting a card only copies files that are new.")
+                Text("Photos: 2026 › Photo › 11 November › 02.11.2026 Name › Camera\nVideos: 2026 › Video › 11 November › 02.11.2026 Name › Media › Camera, plus Project, Assets and Export folders.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Cards") {
-                Toggle("Back up automatically when a card is inserted", isOn: $settings.autoBackupEnabled)
-                Picker("Back up", selection: $settings.detection) {
+                Toggle("Ask for a project as soon as a card is inserted", isOn: $settings.autoBackupEnabled)
+                Picker("Cards to import", selection: $settings.detection) {
                     ForEach(CardDetection.allCases) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -39,21 +40,32 @@ struct SettingsView: View {
                 Text("Reads each copy back and compares its SHA-256 checksum with the original. Slightly slower, strongly recommended.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Eject the card when the backup finishes", isOn: $settings.ejectWhenDone)
+                Toggle("Eject the card when the import finishes", isOn: $settings.ejectWhenDone)
             }
 
             Section("General") {
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                 Toggle("Show notifications", isOn: $settings.notificationsEnabled)
                 HStack {
-                    Button("Open Backup Log") { model.openLog() }
-                    Button("Clear Recent Backups") { model.clearHistory() }
+                    Button("Open Log") { model.openLog() }
+                    Button("Clear Recent") { model.clearHistory() }
                         .disabled(model.history.isEmpty)
                 }
             }
+
+            Section("Memory") {
+                HStack {
+                    Button("Forget Imported Files…") { model.forgetImportedFiles() }
+                    Button("Forget Camera Names") { model.forgetCameraNames() }
+                }
+                Text("SD Backup remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 500, height: 600)
+        .frame(width: 520, height: 680)
         .onChange(of: settings.detection) { _ in model.refreshConnectedVolumes() }
     }
 }

@@ -1,10 +1,12 @@
 import Foundation
 import SDBackupCore
 
-/// The backup that is currently running.
+/// The import that is currently copying.
 struct ActiveBackup: Identifiable {
     let id = UUID()
     let volume: VolumeInfo
+    /// The project name(s) being imported into.
+    let title: String
     let startedAt = Date()
     var progress = BackupProgress(phase: .scanning)
     var copyStartedAt: Date?
@@ -18,7 +20,7 @@ struct ActiveBackup: Identifiable {
     }
 }
 
-/// A finished backup, shown in the menu and persisted between launches.
+/// A finished import, shown in the menu and persisted between launches.
 struct HistoryEntry: Identifiable, Codable, Equatable {
     enum Outcome: String, Codable {
         case completed
@@ -28,7 +30,10 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
     }
 
     var id = UUID()
+    /// Project name(s), or the card name when nothing was imported.
+    let title: String
     let cardName: String
+    let cardID: String
     let date: Date
     let outcome: Outcome
     let filesCopied: Int
@@ -36,18 +41,19 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
     let filesAlreadyBackedUp: Int
     let failedFiles: Int
     let message: String?
-    let folderPath: String
+    /// The project folder to reveal in Finder.
+    let folderPath: String?
 
     var summary: String {
         switch outcome {
         case .completed:
             return filesCopied == 0
-                ? "Already up to date"
-                : "\(Format.count(filesCopied, "new file")) · \(Format.bytes(bytesCopied))"
+                ? "Already there · from \(cardName)"
+                : "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · from \(cardName)"
         case .completedWithErrors:
             return "\(Format.count(filesCopied, "file")) copied · \(failedFiles) couldn’t be copied"
         case .failed, .cancelled:
-            return message ?? "Backup stopped"
+            return message ?? "Import stopped"
         }
     }
 }

@@ -58,7 +58,7 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         let defaultDestination = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Pictures/SD Card Backups", isDirectory: true).path
+            .appendingPathComponent("Pictures/Projects", isDirectory: true).path
         defaults.register(defaults: [
             Key.destination: defaultDestination,
             Key.autoBackup: true,

@@ -1,20 +1,20 @@
 import CryptoKit
 import Foundation
 
-/// Copies the contents of a memory card into a per-card folder, incrementally and safely.
+/// Copies files from a memory card into the destination, incrementally and safely.
 ///
 /// Guarantees:
 /// - The card is only ever read, never modified.
-/// - Files already in the backup are never overwritten or deleted. When a different file with the
-///   same name already exists (for example after the card was reformatted and the camera restarted
-///   its numbering), the new file is saved as "IMG_0001 (1).JPG".
-/// - A file only appears in the backup after it has been completely written and, optionally,
-///   verified. An interrupted backup never leaves truncated files behind.
-/// - Files that are already backed up are skipped, so inserting the same card again only copies
-///   what is new.
+/// - Files already in the destination are never overwritten or deleted. When a different file with
+///   the same name already exists (for example after the card was reformatted and the camera
+///   restarted its numbering), the new file is saved as "IMG_0001 (1).JPG".
+/// - A file only appears in the destination after it has been completely written and, optionally,
+///   verified. An interrupted copy never leaves truncated files behind.
+/// - Files that are already there are skipped, so copying the same card again only copies what is
+///   new.
 ///
-/// `run` is synchronous and blocking; call it from a background task. It honours Swift task
-/// cancellation between chunks.
+/// The methods are synchronous and blocking; call them from a background task. They honour Swift
+/// task cancellation between chunks.
 public struct BackupEngine {
     public typealias ProgressHandler = (BackupProgress) -> Void
 
@@ -25,10 +25,6 @@ public struct BackupEngine {
     /// FAT and exFAT store modification times with two-second precision.
     static let timestampTolerance: TimeInterval = 2
     static let maxNameVariants = 9_999
-    static let scanKeys: Set<URLResourceKey> = [
-        .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
-        .fileSizeKey, .contentModificationDateKey, .creationDateKey,
-    ]
 
     public let options: BackupOptions
     private let fileManager: FileManager
@@ -38,9 +34,9 @@ public struct BackupEngine {
         self.fileManager = fileManager
     }
 
-    // MARK: - Running a backup
+    // MARK: - Mirroring a whole card
 
-    /// Backs up `source` into `destinationRoot/<cardFolderName>`.
+    /// Copies the whole card into `destinationRoot/<cardFolderName>`, keeping its folder structure.
     @discardableResult
     public func run(
         source: URL,
@@ -48,49 +44,93 @@ public struct BackupEngine {
         cardFolderName: String,
         progress: @escaping ProgressHandler = { _ in }
     ) throws -> BackupResult {
+        let source = source.standardizedFileURL
+        let destinationRoot = destinationRoot.standardizedFileURL
+        try prepare(destinationRoot: destinationRoot, source: source)
+        progress(BackupProgress(phase: .scanning))
+
+        let scan = try CardScanner(fileManager: fileManager).scan(source)
+        let cardRoot = destinationRoot.appendingPathComponent(Self.sanitizedFolderName(cardFolderName), isDirectory: true)
+        let items = scan.files.map { file -> CopyItem in
+            let directory = (file.relativePath as NSString).deletingLastPathComponent
+            let target = directory.isEmpty ? cardRoot : cardRoot.appendingPathComponent(directory, isDirectory: true)
+            return CopyItem(file: file, targetDirectory: target)
+        }
+
+        let result = try copy(items, from: source, to: destinationRoot, progress: progress)
+        return BackupResult(
+            destination: cardRoot,
+            filesCopied: result.filesCopied,
+            bytesCopied: result.bytesCopied,
+            filesAlreadyBackedUp: result.filesAlreadyBackedUp,
+            failures: scan.failures + result.failures,
+            processedFiles: result.processedFiles,
+            startedAt: result.startedAt,
+            finishedAt: result.finishedAt
+        )
+    }
+
+    // MARK: - Copying a list of files
+
+    /// Copies each item into its target folder.
+    ///
+    /// - Parameters:
+    ///   - source: The card the files come from. Used to detect the card being removed.
+    ///   - destinationRoot: Folder that contains every target folder. It must exist or be creatable,
+    ///     and it holds the temporary staging folder.
+    ///   - createFolders: Extra (empty) folders to create, e.g. a video project's Project/Assets/Export.
+    public func copy(
+        _ items: [CopyItem],
+        from source: URL,
+        to destinationRoot: URL,
+        createFolders: [URL] = [],
+        progress: @escaping ProgressHandler = { _ in }
+    ) throws -> BackupResult {
         let startedAt = Date()
         let source = source.standardizedFileURL
         let destinationRoot = destinationRoot.standardizedFileURL
         try prepare(destinationRoot: destinationRoot, source: source)
-        let cardRoot = destinationRoot.appendingPathComponent(Self.sanitizedFolderName(cardFolderName), isDirectory: true)
 
         var reporter = ProgressReporter(handler: progress)
         var state = BackupProgress(phase: .scanning)
         reporter.send(state, force: true)
 
-        // 1. List every file on the card.
+        // 1. Work out which files are new and where each one goes.
         var failures: [BackupFailure] = []
-        var files: [SourceFile] = []
-        try scan(source, relativeComponents: [], into: &files, failures: &failures)
-
-        // 2. Work out which files are new and where each one goes.
+        var processed: [ProcessedFile] = []
         var plan: [PlannedCopy] = []
         var reserved = Set<String>()
         var alreadyBackedUp = 0
-        for file in files {
+        for item in items {
             try Task.checkCancellation()
             do {
-                if let target = try destination(for: file, in: cardRoot, reserved: &reserved) {
-                    plan.append(PlannedCopy(file: file, destination: target))
-                } else {
+                switch try resolveDestination(for: item.file, in: item.targetDirectory, reserved: &reserved) {
+                case .copy(let target):
+                    plan.append(PlannedCopy(file: item.file, destination: target))
+                case .alreadyPresent(let existing):
                     alreadyBackedUp += 1
+                    processed.append(ProcessedFile(source: item.file, destination: existing, wasCopied: false))
                 }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 try checkVolumesArePresent(source: source, destinationRoot: destinationRoot)
-                failures.append(BackupFailure(relativePath: file.relativePath, message: error.localizedDescription))
+                failures.append(BackupFailure(relativePath: item.file.relativePath, message: error.localizedDescription))
             }
         }
 
-        // 3. Make sure everything fits.
+        // 2. Make sure everything fits.
         let bytesNeeded = plan.reduce(Int64(0)) { $0 + $1.file.size }
         if !plan.isEmpty, let available = availableCapacity(at: destinationRoot),
            bytesNeeded + options.reservedFreeSpace > available {
             throw BackupError.insufficientSpace(needed: bytesNeeded, available: available)
         }
 
-        // 4. Copy.
+        for folder in createFolders {
+            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+
+        // 3. Copy.
         state = BackupProgress(
             phase: .copying,
             filesToCopy: plan.count,
@@ -119,6 +159,7 @@ public struct BackupEngine {
                     }
                     filesCopied += 1
                     bytesCopied += item.file.size
+                    processed.append(ProcessedFile(source: item.file, destination: item.destination, wasCopied: true))
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -140,24 +181,39 @@ public struct BackupEngine {
         reporter.send(state, force: true)
 
         return BackupResult(
-            destination: cardRoot,
+            destination: destinationRoot,
             filesCopied: filesCopied,
             bytesCopied: bytesCopied,
             filesAlreadyBackedUp: alreadyBackedUp,
             failures: failures,
+            processedFiles: processed,
             startedAt: startedAt,
             finishedAt: Date()
         )
     }
 
-    /// Turns a volume name into a safe folder name.
+    // MARK: - Names
+
+    /// Turns a volume or project name into a safe folder name.
     public static func sanitizedFolderName(_ name: String) -> String {
+        sanitizedFolderName(name, fallback: "Untitled Card")
+    }
+
+    public static func sanitizedFolderName(_ name: String, fallback: String) -> String {
         var result = name
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         while result.hasPrefix(".") { result.removeFirst() }
-        return result.isEmpty ? "Untitled Card" : result
+        return result.isEmpty ? fallback : result
+    }
+
+    static func numberedVariant(of url: URL, number: Int) -> URL {
+        let directory = url.deletingLastPathComponent()
+        let ext = url.pathExtension
+        let stem = url.deletingPathExtension().lastPathComponent
+        let name = ext.isEmpty ? "\(stem) (\(number))" : "\(stem) (\(number)).\(ext)"
+        return directory.appendingPathComponent(name, isDirectory: false)
     }
 
     // MARK: - Destination
@@ -224,74 +280,20 @@ public struct BackupEngine {
         return nil
     }
 
-    // MARK: - Scanning
-
-    private func scan(
-        _ directory: URL,
-        relativeComponents: [String],
-        into files: inout [SourceFile],
-        failures: inout [BackupFailure]
-    ) throws {
-        try Task.checkCancellation()
-
-        let children: [URL]
-        do {
-            children = try fileManager.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: Array(Self.scanKeys),
-                options: []
-            )
-        } catch {
-            if relativeComponents.isEmpty {
-                // Can't read the card at all.
-                throw Self.isPermissionError(error)
-                    ? BackupError.accessDenied(path: directory.path)
-                    : BackupError.sourceUnreadable(path: directory.path, reason: error.localizedDescription)
-            }
-            failures.append(BackupFailure(
-                relativePath: relativeComponents.joined(separator: "/") + "/",
-                message: error.localizedDescription
-            ))
-            return
-        }
-
-        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            let name = child.lastPathComponent
-            guard !FileFilter.shouldSkip(name) else { continue }
-            let components = relativeComponents + [name]
-
-            let values: URLResourceValues
-            do {
-                values = try child.resourceValues(forKeys: Self.scanKeys)
-            } catch {
-                failures.append(BackupFailure(relativePath: components.joined(separator: "/"), message: error.localizedDescription))
-                continue
-            }
-
-            if values.isSymbolicLink == true {
-                continue
-            } else if values.isDirectory == true {
-                try scan(child, relativeComponents: components, into: &files, failures: &failures)
-            } else if values.isRegularFile == true {
-                files.append(SourceFile(
-                    url: child,
-                    relativePath: components.joined(separator: "/"),
-                    size: Int64(values.fileSize ?? 0),
-                    modificationDate: values.contentModificationDate ?? Date(timeIntervalSince1970: 0),
-                    creationDate: values.creationDate
-                ))
-            }
-        }
-    }
-
     // MARK: - Planning
 
-    /// Returns where `file` should be copied, or `nil` when it is already backed up.
+    enum Resolution {
+        case copy(URL)
+        case alreadyPresent(URL)
+    }
+
+    /// Decides where `file` goes inside `directory`.
     ///
     /// Tries "name.ext", then "name (1).ext", "name (2).ext", … and stops at the first slot that is
-    /// either free (copy there) or already holds this exact file (skip).
-    func destination(for file: SourceFile, in cardRoot: URL, reserved: inout Set<String>) throws -> URL? {
-        let original = cardRoot.appendingPathComponent(file.relativePath, isDirectory: false)
+    /// either free (copy there) or already holds this exact file (nothing to copy).
+    func resolveDestination(for file: SourceFile, in directory: URL, reserved: inout Set<String>) throws -> Resolution {
+        let fileName = (file.relativePath as NSString).lastPathComponent
+        let original = directory.appendingPathComponent(fileName, isDirectory: false)
         for number in 0...Self.maxNameVariants {
             let candidate = number == 0 ? original : Self.numberedVariant(of: original, number: number)
             // Destination volumes are usually case-insensitive.
@@ -301,10 +303,10 @@ public struct BackupEngine {
             var isDirectory: ObjCBool = false
             guard fileManager.fileExists(atPath: candidate.path, isDirectory: &isDirectory) else {
                 reserved.insert(key)
-                return candidate
+                return .copy(candidate)
             }
             if !isDirectory.boolValue, try isBackup(of: file, at: candidate) {
-                return nil
+                return .alreadyPresent(candidate)
             }
         }
         throw BackupError.tooManyNameCollisions
@@ -322,14 +324,6 @@ public struct BackupEngine {
         return try contentsEqual(file.url, candidate)
     }
 
-    static func numberedVariant(of url: URL, number: Int) -> URL {
-        let directory = url.deletingLastPathComponent()
-        let ext = url.pathExtension
-        let stem = url.deletingPathExtension().lastPathComponent
-        let name = ext.isEmpty ? "\(stem) (\(number))" : "\(stem) (\(number)).\(ext)"
-        return directory.appendingPathComponent(name, isDirectory: false)
-    }
-
     private func contentsEqual(_ first: URL, _ second: URL) throws -> Bool {
         let a = try FileHandle(forReadingFrom: first)
         defer { try? a.close() }
@@ -344,7 +338,7 @@ public struct BackupEngine {
         }
     }
 
-    // MARK: - Copying
+    // MARK: - Copying one file
 
     private func copy(_ item: PlannedCopy, staging: URL, onBytes: (Int64) -> Void) throws {
         let file = item.file

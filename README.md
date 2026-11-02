@@ -1,30 +1,79 @@
 # SD Backup
 
-A small macOS menu bar app that automatically backs up SD cards when they are inserted.
+A macOS menu bar app that imports SD cards straight into organised project folders.
 
-Insert a card and SD Backup copies everything new on it into a folder on your Mac, verifies each
-copy, and sends a notification when it's done. Insert the same card again later and only the new
-photos and videos are copied.
+Insert a card. SD Backup reads it, works out the shoot dates and which cameras were used, and asks
+which project each shoot date belongs to: a new project or one of your last three. It then copies
+photos and videos into the right year, month, project and camera folders and verifies every copy.
 
-## Features
+## The folder structure
 
-- **Automatic.** Detects cards in the built-in SD slot or any USB card reader, plus any removable
-  drive with a camera `DCIM` folder. It can optionally include all removable drives.
-- **Incremental.** Each card has its own backup folder. Files that are already backed up are
-  skipped.
-- **Non-destructive.** Nothing on the card is ever modified or deleted, and nothing in the backup is
-  ever overwritten. If a card is reformatted and the camera reuses a name like `IMG_0001.JPG`, the
-  new file is saved as `IMG_0001 (1).JPG`.
-- **Verified.** Each copy is read back from disk and compared with the original using SHA-256.
-  You can turn this off in Settings.
-- **Crash-safe.** Files are written to a hidden staging folder and moved into place only after
-  they are complete. Pulling the card or quitting mid-backup never leaves half-written files. The
-  next insertion picks up where it stopped.
-- **Handles time zones.** FAT-formatted cards store local time. If a card's timestamps shift
-  (for example after travel or a daylight-saving change), files with the same size are compared
-  byte for byte instead of being copied again.
-- Checks free space before copying, prevents idle sleep during a backup, can eject the card when
-  finished, opens at login, and keeps a log at `~/Library/Logs/SD Backup/backups.log`.
+Everything goes into one **projects folder** (default `~/Pictures/Projects`, changeable in
+Settings, can be an external drive):
+
+```
+Projects/
+└── 2026/
+    ├── Photo/
+    │   └── 11 November/
+    │       └── 02.11.2026 Ana Wedding/
+    │           ├── R5/            ← IMG_0001.CR3, IMG_0001.JPG …
+    │           └── R6/
+    └── Video/
+        └── 11 November/
+            └── 02.11.2026 Ana Wedding/
+                ├── Media/
+                │   ├── R5/        ← C0001.MP4, C0001M01.XML …
+                │   └── R6/
+                ├── Project/       ← for your editing project
+                ├── Assets/
+                └── Export/
+```
+
+- **Year, month and date** come from the **shoot date** stored in each file (EXIF for photos, clip
+  metadata for video), falling back to the file's date. Importing a week later still files
+  everything under the day it was shot.
+- **Photo or Video** is decided by file type. A card with both is split between the two branches,
+  under the same project name.
+- **A project folder** is named after its first shoot day. Adding a later day to an existing
+  project puts the files in that same folder.
+- **Camera folders** are always created, even when only one camera was used, so files never move
+  later and editing projects never lose their media links.
+- **Original file names** are kept. RAW and JPEG stay side by side. If two different files share
+  a name, the newer one is saved as `IMG_0001 (1).JPG`; nothing is ever overwritten.
+- **Sidecar files** (Sony/Canon clip `.XML`, GoPro `.THM`, DJI `.LRF`/`.SRT`, `.XMP`) are copied
+  next to the file they belong to. **Audio** (`.WAV` etc.) goes to the video project's
+  `Media/<device>/`. Camera system and database files are skipped.
+
+## Importing a card
+
+1. **Insert the card.** SD Backup reads it in the background. Nothing is copied yet.
+2. **A notification appears**, and the menu bar icon shows a count of cards waiting.
+3. **Click the SD card icon.** The Import panel lists every shoot date on the card with its
+   photo, video and audio counts. For each date, choose:
+   - **New project** and type its name
+   - **Same as** another new project on this card (for a multi-day shoot)
+   - one of your **last three projects**
+   - **Skip for now**
+
+   By default, every date goes into one new project. Below the dates, check the **camera folder
+   names**. They are read from the files (`Canon EOS R5` → `R5`, `ILCE-7M4` → `A7 IV`) and you
+   can change them. Your names are remembered for next time.
+4. **Click Import.** Files are copied, checked against the originals, and the card can be ejected
+   automatically.
+
+Insert the same card again later and only the **new** files are offered. If there's nothing new,
+you just get a notification. Choose **Not Now** to close the panel; you can start again with
+**Import** next to the card.
+
+### Camera detection
+
+- **Photos:** always detected, from EXIF.
+- **Sony video:** detected from the clip XML.
+- **Other video:** detected from file metadata where the camera writes it. If it doesn't, the
+  video is assumed to come from the camera that shot the card's photos.
+- **Audio, and anything else without camera info:** shown as "No camera info". The name you type
+  is remembered for that card, for example "Zoom H5" for a recorder card.
 
 ## Requirements
 
@@ -45,9 +94,9 @@ appears in the menu bar. To build without installing, omit `--install`; the app 
 
 macOS will ask for two permissions. Allow both:
 
-1. **Notifications**, so you hear when a backup starts and finishes.
+1. **Notifications**, so you know when a card is ready to import and when it's done.
 2. **Access to files on a removable volume**, which appears the first time a card is inserted.
-   Without it the app can't read the card. If you dismissed the prompt, enable it in
+   If you dismissed the prompt, enable it in
    **System Settings › Privacy & Security › Files and Folders › SD Backup › Removable Volumes**.
 
 When the app runs from `/Applications`, it registers itself to open at login the first time it
@@ -56,50 +105,41 @@ starts. You can change this in Settings.
 > The build is signed ad hoc for your Mac only. macOS ties privacy permissions to the signature,
 > so after rebuilding you may be asked for card access again.
 
-## Where backups go
+## The menu bar panel
 
-The default backup folder is `~/Pictures/SD Card Backups`. You can change it in Settings, and it
-can be on an external drive. Each card gets its own folder that mirrors the card's structure:
+The panel is styled like Control Center:
 
-```
-SD Card Backups/
-├── EOS_DIGITAL (3A1F22B0)/
-│   └── DCIM/100CANON/IMG_0001.CR3 …
-└── Untitled (9C04E1D7)/
-    └── PRIVATE/M4ROOT/CLIP/C0001.MP4 …
-```
+- **Toggles**: Auto Import (read and ask as soon as a card is inserted), Verify (SHA-256 check of
+  every copy), Auto Eject.
+- **Projects** opens the projects folder. **Settings** opens all options.
+- **Import**: the shoot-date and camera choices described above.
+- **Status**: reading progress, or import progress with size, file count, time left and a cancel
+  button.
+- **Cards** lists connected cards, when each was last imported, and **Import** / **Eject** buttons.
+- **Recent** shows the last imports. Click one to open its project folder.
 
-The short code after the name is the card's volume ID. It keeps cards with the same name apart,
-since every Canon card is called `EOS_DIGITAL`. Reformatting a card gives it a new ID, so a
-reformatted card starts a new folder.
+Ejecting a card in Finder while it is being read or imported stops that work so the card can be
+ejected. If macOS says the disk is still in use, eject it again.
 
-If you delete files from a backup folder, they are copied again the next time that card is
-inserted.
+## Settings
 
-## Using it
+- **Projects folder.**
+- **Ask for a project as soon as a card is inserted.**
+- **Which cards count:** SD and camera cards, or any removable drive. External hard drives and
+  SSDs are never included.
+- **Verify** and **eject**.
+- **Open at login** and **notifications**.
+- **Forget Imported Files** offers every file on every card again. **Forget Camera Names**
+  resets the folder names you've given cameras.
 
-The SD card icon sits on the right side of the menu bar, next to Wi-Fi, battery and Control
-Center. Clicking it opens a panel styled like Control Center:
-
-- **Toggles**: Auto Backup, Verify and Auto Eject. Each round button fills with your accent
-  color when it's on.
-- **Backups** opens the backup folder. **Settings** opens all options.
-- **Status** shows "Ready", or the current backup with a slider-style progress bar, sizes, file
-  count, time left and a cancel button.
-- **Cards** lists connected cards with when each was last backed up, plus **Back Up** and
-  **Eject** buttons.
-- **Recent** shows the last few backups. Click one to show it in Finder.
-
-When **Auto Backup** is off, cards are copied only when you click **Back Up**.
-
-Ejecting a card in Finder during a backup stops the backup so the card can be ejected. If macOS
-says the disk is still in use, eject it again.
+The app's memory lives in `~/Library/Application Support/SD Backup` (projects and import records),
+and its log in `~/Library/Logs/SD Backup/backups.log`.
 
 ## Development
 
 ```bash
 swift build          # compile
-swift test           # run the backup engine tests (requires full Xcode)
+swift test           # run the core tests (requires full Xcode)
 swift run SDBackup   # run without an app bundle (notifications and login item are disabled)
 ```
 
@@ -107,11 +147,18 @@ To work in Xcode, run `open Package.swift`.
 
 | Path | Purpose |
 | --- | --- |
-| `Sources/SDBackupCore/BackupEngine.swift` | Scanning, de-duplication, verified copying. UI-independent and unit tested. |
-| `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card (DiskArbitration). |
-| `Sources/SDBackup/AppModel.swift` | Watches mounts and unmounts, queues and runs backups, keeps history. |
-| `Sources/SDBackup/Views/` | Control Center–style menu bar panel and the Settings window (SwiftUI). |
-| `Resources/Info.plist` | Bundle settings: menu-bar-only (`LSUIElement`), permission text. |
+| `Sources/SDBackupCore/CardAnalyzer.swift` | Reads a card: shoot days, cameras, what's new. |
+| `Sources/SDBackupCore/MediaClassifier.swift` | Photo / video / audio / sidecar detection, and pairing sidecars with their media. |
+| `Sources/SDBackupCore/MediaMetadata.swift` | EXIF (ImageIO), video metadata (AVFoundation), Sony clip XML. |
+| `Sources/SDBackupCore/CameraNames.swift` | `Canon EOS R5` → `R5`, `ILCE-7M4` → `A7 IV`, … |
+| `Sources/SDBackupCore/ProjectLayout.swift` | Folder naming, the copy plan, and the per-card import record. |
+| `Sources/SDBackupCore/BackupEngine.swift` | Verified, non-destructive, crash-safe copying. |
+| `Sources/SDBackup/AppModel.swift` | The read → choose project → import flow. |
+| `Sources/SDBackup/ImportDraft.swift` | Your per-date project choices and camera names. |
+| `Sources/SDBackup/LibraryStore.swift` | Saved projects, camera names and import records. |
+| `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card. |
+| `Sources/SDBackup/Views/` | Control Center–style panel and the Settings window (SwiftUI). |
 | `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`. |
 
-To use your own bundle identifier, change `CFBundleIdentifier` in `Resources/Info.plist`.
+The core module (`SDBackupCore`) has no UI and is covered by `Tests/SDBackupCoreTests`, including
+an end-to-end import of a mixed Canon/Sony/recorder card into the project structure.

@@ -18,12 +18,19 @@ struct MenuContentView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            Module {
-                if let active = model.active {
-                    ActiveBackupContent(backup: active)
-                } else {
-                    IdleStatusContent(autoBackup: settings.autoBackupEnabled)
-                }
+            if let draft = model.drafts.first {
+                ImportDraftView(draft: draft, queued: model.drafts.count - 1)
+                    .id(draft.id)
+            }
+
+            if let active = model.active {
+                Module { ActiveImportContent(backup: active) }
+            }
+            if let volume = model.analyzing {
+                Module { ReadingCardContent(volume: volume, progress: model.analysisProgress) }
+            }
+            if model.active == nil, model.analyzing == nil, model.drafts.isEmpty {
+                Module { IdleStatusContent(autoImport: settings.autoBackupEnabled) }
             }
 
             cards
@@ -44,15 +51,15 @@ struct MenuContentView: View {
     private var toggles: some View {
         Module(fillsHeight: true) {
             VStack(alignment: .leading, spacing: 10) {
-                Toggle("Auto Backup", isOn: $settings.autoBackupEnabled)
+                Toggle("Auto Import", isOn: $settings.autoBackupEnabled)
                     .toggleStyle(ControlCenterToggleStyle(symbol: "arrow.triangle.2.circlepath"))
-                    .help("Back up cards automatically when they’re inserted")
+                    .help("Read cards automatically when they’re inserted and ask which project they belong to")
                 Toggle("Verify", isOn: $settings.verifyCopies)
                     .toggleStyle(ControlCenterToggleStyle(symbol: "checkmark.shield.fill"))
                     .help("Check every copy against the original (SHA-256)")
                 Toggle("Auto Eject", isOn: $settings.ejectWhenDone)
                     .toggleStyle(ControlCenterToggleStyle(symbol: "eject.fill"))
-                    .help("Eject the card when its backup finishes")
+                    .help("Eject the card when its import finishes")
             }
         }
         .frame(width: ControlCenterMetrics.columnWidth)
@@ -62,7 +69,7 @@ struct MenuContentView: View {
         Button {
             model.revealDestination()
         } label: {
-            TileLabel(symbol: "folder.fill", title: "Backups", subtitle: settings.destinationURL.lastPathComponent)
+            TileLabel(symbol: "folder.fill", title: "Projects", subtitle: settings.destinationURL.lastPathComponent)
         }
         .buttonStyle(ModuleButtonStyle())
         .help("Open \(settings.abbreviatedDestination)")
@@ -131,23 +138,200 @@ struct MenuContentView: View {
     }
 }
 
-// MARK: - Status module
+// MARK: - Import: pick a project for each shoot day
+
+private struct ImportDraftView: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var draft: ImportDraft
+    /// Other cards waiting after this one.
+    let queued: Int
+
+    var body: some View {
+        Module {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 8) {
+                    CircleIcon(symbol: "sdcard.fill", isOn: true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Import “\(draft.volume.name)”")
+                            .font(.moduleTitle)
+                            .lineLimit(1)
+                        Text(summary)
+                            .font(.moduleSubtitle)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    if queued > 0 {
+                        Text("+\(queued) waiting")
+                            .font(.moduleSubtitle)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if draft.days.count > 3 {
+                    ScrollView {
+                        dayRows.padding(.trailing, 8)
+                    }
+                    .frame(height: 260)
+                } else {
+                    dayRows
+                }
+
+                if !draft.cameraKeys.isEmpty {
+                    cameraFolders
+                }
+
+                if let reason = draft.blockingReason {
+                    Text(reason)
+                        .font(.moduleSubtitle)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    Button("Not Now") { model.dismiss(draft) }
+                        .buttonStyle(PillButtonStyle())
+                        .help("Close without importing. Use Import on the card later.")
+                    Spacer()
+                    Button("Import") { model.startImport(draft) }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!draft.isReady)
+                }
+            }
+        }
+    }
+
+    private var summary: String {
+        var parts = [
+            Format.count(draft.days.count, "shoot day"),
+            Format.count(draft.analysis.items.count, "new file"),
+            Format.bytes(draft.totalBytes),
+        ]
+        if draft.analysis.alreadyImported > 0 {
+            parts.append("\(draft.analysis.alreadyImported) imported before")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var dayRows: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(draft.days) { summary in
+                DayRow(draft: draft, summary: summary)
+            }
+        }
+    }
+
+    private var cameraFolders: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Camera folders")
+                .font(.moduleSubtitle.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(draft.cameraKeys, id: \.self) { key in
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(draft.cameraLabel(key))
+                            .font(.moduleSubtitle)
+                            .lineLimit(1)
+                        Text(Format.count(draft.cameraFileCounts[key] ?? 0, "file"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 6)
+                    TextField("Folder name", text: cameraBinding(key))
+                        .textFieldStyle(.roundedBorder)
+                        .font(.moduleSubtitle)
+                        .frame(width: 110)
+                }
+            }
+        }
+    }
+
+    private func cameraBinding(_ key: String) -> Binding<String> {
+        Binding(
+            get: { draft.cameraNames[key] ?? "" },
+            set: { draft.cameraNames[key] = $0 }
+        )
+    }
+}
+
+private struct DayRow: View {
+    @ObservedObject var draft: ImportDraft
+    let summary: DaySummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(summary.day.folderDate)
+                    .font(.moduleTitle)
+                    .monospacedDigit()
+                Text(summary.day.date().formatted(.dateTime.weekday(.abbreviated)))
+                    .font(.moduleSubtitle)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text(counts)
+                    .font(.moduleSubtitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Picker("Project for \(summary.day.folderDate)", selection: choice) {
+                ForEach(draft.options(for: summary.day)) { option in
+                    Text(option.title).tag(option.choice)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+
+            if draft.choice(for: summary.day) == .newProject {
+                TextField("New project name", text: name)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    private var counts: String {
+        var parts: [String] = []
+        if summary.photos > 0 { parts.append(Format.count(summary.photos, "photo")) }
+        if summary.videos > 0 { parts.append(Format.count(summary.videos, "video")) }
+        if summary.audio > 0 { parts.append("\(summary.audio) audio") }
+        parts.append(Format.bytes(summary.bytes))
+        return parts.joined(separator: " · ")
+    }
+
+    private var choice: Binding<DayChoice> {
+        Binding(
+            get: { draft.choice(for: summary.day) },
+            set: { draft.setChoice($0, for: summary.day) }
+        )
+    }
+
+    private var name: Binding<String> {
+        Binding(
+            get: { draft.projectNames[summary.day] ?? "" },
+            set: { draft.projectNames[summary.day] = $0 }
+        )
+    }
+}
+
+// MARK: - Status
 
 private struct IdleStatusContent: View {
-    let autoBackup: Bool
+    let autoImport: Bool
 
     var body: some View {
         HStack(spacing: 10) {
             CircleIcon(
-                symbol: autoBackup ? "checkmark" : "pause.fill",
+                symbol: autoImport ? "checkmark" : "pause.fill",
                 isOn: true,
-                tint: autoBackup ? .green : .orange,
+                tint: autoImport ? .green : .orange,
                 size: 30
             )
             VStack(alignment: .leading, spacing: 1) {
-                Text(autoBackup ? "Ready" : "Auto Backup Is Off")
+                Text(autoImport ? "Ready" : "Auto Import Is Off")
                     .font(.moduleTitle)
-                Text(autoBackup ? "Insert an SD card to back it up." : "Cards are only backed up when you click Back Up.")
+                Text(autoImport ? "Insert an SD card to import it into a project." : "Click Import on a card below to import it.")
                     .font(.moduleSubtitle)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -157,7 +341,34 @@ private struct IdleStatusContent: View {
     }
 }
 
-private struct ActiveBackupContent: View {
+private struct ReadingCardContent: View {
+    @EnvironmentObject private var model: AppModel
+    let volume: VolumeInfo
+    let progress: AppModel.AnalysisProgress?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            StatusHeader(title: "Reading Card", subtitle: volume.name) { model.cancelAnalysis() }
+            CapsuleProgress(fraction: fraction, symbol: "sdcard.fill")
+            Text(caption)
+                .font(.moduleSubtitle)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var fraction: Double? {
+        guard let progress, progress.total > 0 else { return nil }
+        return Double(progress.done) / Double(progress.total)
+    }
+
+    private var caption: String {
+        guard let progress, progress.total > 0 else { return "Looking for photos and videos…" }
+        return "Finding shoot dates and cameras · \(progress.done.formatted()) of \(Format.count(progress.total, "file"))"
+    }
+}
+
+private struct ActiveImportContent: View {
     @EnvironmentObject private var model: AppModel
     let backup: ActiveBackup
 
@@ -166,32 +377,14 @@ private struct ActiveBackupContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Backing Up")
-                        .font(.moduleTitle)
-                    Text(backup.volume.name)
-                        .font(.moduleSubtitle)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Button {
-                    model.cancelBackup()
-                } label: {
-                    CircleIcon(symbol: "xmark", size: 22)
-                }
-                .buttonStyle(.plain)
-                .help("Cancel backup")
-                .accessibilityLabel("Cancel backup")
-            }
+            StatusHeader(title: "Importing", subtitle: "\(backup.volume.name) → \(backup.title)") { model.cancelImport() }
 
             CapsuleProgress(fraction: isCopying ? progress.fractionCompleted : nil, symbol: "sdcard.fill")
 
             if !isCopying {
-                caption("Checking what’s new on the card…")
+                caption("Checking the project folders…")
             } else if progress.filesToCopy == 0 {
-                caption("Everything is already backed up.")
+                caption("Everything is already in the project.")
             } else {
                 HStack {
                     caption("\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))")
@@ -212,8 +405,8 @@ private struct ActiveBackupContent: View {
                 }
             }
 
-            if !model.queue.isEmpty {
-                caption("Up next: " + model.queue.map(\.name).joined(separator: ", "))
+            if !model.importQueue.isEmpty {
+                caption("Up next: " + model.importQueue.map(\.title).joined(separator: ", "))
                     .lineLimit(1)
             }
         }
@@ -227,18 +420,43 @@ private struct ActiveBackupContent: View {
     }
 }
 
+/// Title, subtitle and a round cancel button.
+private struct StatusHeader: View {
+    let title: String
+    let subtitle: String
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.moduleTitle)
+                Text(subtitle)
+                    .font(.moduleSubtitle)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button(action: cancel) {
+                CircleIcon(symbol: "xmark", size: 22)
+            }
+            .buttonStyle(.plain)
+            .help("Cancel")
+            .accessibilityLabel("Cancel")
+        }
+    }
+}
+
 // MARK: - Rows
 
 private struct CardRow: View {
     @EnvironmentObject private var model: AppModel
     let volume: VolumeInfo
 
-    private var isActive: Bool { model.active?.volume.id == volume.id }
-    private var isQueued: Bool { model.queue.contains { $0.id == volume.id } }
-
     var body: some View {
+        let status = model.status(of: volume)
         HStack(spacing: 8) {
-            CircleIcon(symbol: "sdcard.fill", isOn: isActive)
+            CircleIcon(symbol: "sdcard.fill", isOn: status != .idle)
             VStack(alignment: .leading, spacing: 0) {
                 Text(volume.name)
                     .font(.moduleTitle)
@@ -249,13 +467,18 @@ private struct CardRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
-            if isActive || isQueued {
-                Text(isActive ? "Backing up" : "Queued")
-                    .font(.moduleSubtitle)
-                    .foregroundStyle(.secondary)
-            } else {
-                Button("Back Up") { model.enqueue(volume) }
+            switch status {
+            case .idle:
+                Button("Import") { model.prepareImport(volume) }
                     .buttonStyle(PillButtonStyle())
+            case .reading:
+                statusText("Reading…")
+            case .needsProject:
+                statusText("Choose project")
+            case .queued:
+                statusText("Queued")
+            case .importing:
+                statusText("Importing")
             }
             Button {
                 model.eject(volume)
@@ -263,19 +486,25 @@ private struct CardRow: View {
                 CircleIcon(symbol: "eject.fill", size: 22)
             }
             .buttonStyle(.plain)
-            .disabled(isActive)
-            .opacity(isActive ? 0.4 : 1)
+            .disabled(status == .importing)
+            .opacity(status == .importing ? 0.4 : 1)
             .help("Eject “\(volume.name)”")
             .accessibilityLabel("Eject \(volume.name)")
         }
     }
 
+    private func statusText(_ text: String) -> some View {
+        Text(text)
+            .font(.moduleSubtitle)
+            .foregroundStyle(.secondary)
+    }
+
     private var detail: String {
-        if let last = model.lastBackup(of: volume) {
-            return "Backed up \(last.date.formatted(.relative(presentation: .named)))"
+        if let last = model.lastImport(of: volume) {
+            return "Imported \(last.date.formatted(.relative(presentation: .named)))"
         }
         let capacity = volume.capacity.map { Format.bytes($0) + " · " } ?? ""
-        return capacity + "Not backed up yet"
+        return capacity + "Not imported yet"
     }
 }
 
@@ -290,7 +519,7 @@ private struct HistoryRow: View {
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text(entry.cardName)
+                    Text(entry.title)
                         .font(.moduleTitle)
                         .lineLimit(1)
                     Spacer()
