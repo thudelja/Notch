@@ -68,6 +68,23 @@ final class LibraryStore {
         Self.write(projects, to: projectsURL)
     }
 
+    /// Points the projects of `year` that lived in `oldRoot` at `newRoot`. Returns how many changed.
+    @discardableResult
+    func moveProjects(year: Int, from oldRoot: String, to newRoot: String) -> Int {
+        let old = URL(fileURLWithPath: oldRoot, isDirectory: true).standardizedFileURL.path
+        var changed = 0
+        for index in projects.indices
+        where projects[index].startDay.year == year
+            && URL(fileURLWithPath: projects[index].rootPath, isDirectory: true).standardizedFileURL.path == old {
+            projects[index].rootPath = newRoot
+            changed += 1
+        }
+        if changed > 0 {
+            Self.write(projects, to: projectsURL)
+        }
+        return changed
+    }
+
     // MARK: - Camera names
 
     func cameraName(forModel model: String, make: String?) -> String {

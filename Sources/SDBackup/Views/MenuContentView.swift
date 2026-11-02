@@ -29,7 +29,10 @@ struct MenuContentView: View {
             if let volume = model.analyzing {
                 Module { ReadingCardContent(volume: volume, progress: model.analysisProgress) }
             }
-            if model.active == nil, model.analyzing == nil, model.drafts.isEmpty {
+            if let migration = model.migration {
+                Module { MovingYearContent(migration: migration) }
+            }
+            if model.active == nil, model.analyzing == nil, model.migration == nil, model.drafts.isEmpty {
                 Module { IdleStatusContent(autoImport: settings.autoBackupEnabled) }
             }
 
@@ -420,6 +423,41 @@ private struct ActiveImportContent: View {
     }
 }
 
+private struct MovingYearContent: View {
+    @EnvironmentObject private var model: AppModel
+    let migration: ActiveMigration
+
+    private var progress: BackupProgress { migration.progress }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            StatusHeader(title: "Moving \(migration.yearText)", subtitle: "To “\(migration.driveName)”") { model.cancelMigration() }
+            CapsuleProgress(
+                fraction: progress.phase == .copying ? progress.fractionCompleted : nil,
+                symbol: "externaldrive.fill"
+            )
+            if progress.phase == .scanning {
+                caption("Checking what’s already on the drive…")
+            } else {
+                HStack {
+                    caption("\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))")
+                    Spacer()
+                    caption(migration.estimatedSecondsRemaining.map { "\(Format.duration($0)) left" } ?? "")
+                }
+                caption("Each file is deleted from this Mac once its copy is verified.")
+            }
+        }
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.moduleSubtitle)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 /// Title, subtitle and a round cancel button.
 private struct StatusHeader: View {
     let title: String
@@ -539,7 +577,7 @@ private struct HistoryRow: View {
 
     private var icon: String {
         switch entry.outcome {
-        case .completed: return "checkmark.circle.fill"
+        case .completed: return entry.kind == .migration ? "externaldrive.fill.badge.checkmark" : "checkmark.circle.fill"
         case .completedWithErrors: return "exclamationmark.triangle.fill"
         case .failed: return "xmark.octagon.fill"
         case .cancelled: return "stop.circle.fill"

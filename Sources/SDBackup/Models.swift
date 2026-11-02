@@ -12,11 +12,23 @@ struct ActiveBackup: Identifiable {
     var copyStartedAt: Date?
 
     var estimatedSecondsRemaining: TimeInterval? {
-        guard let copyStartedAt, progress.bytesProcessed > 0 else { return nil }
-        let elapsed = Date().timeIntervalSince(copyStartedAt)
-        guard elapsed > 3 else { return nil }
-        let bytesPerSecond = Double(progress.bytesProcessed) / elapsed
-        return Double(max(0, progress.bytesToCopy - progress.bytesProcessed)) / bytesPerSecond
+        Format.remaining(progress, since: copyStartedAt)
+    }
+}
+
+/// A year folder being moved to another drive.
+struct ActiveMigration: Identifiable {
+    let id = UUID()
+    let year: Int
+    let destinationRoot: URL
+    let driveName: String
+    var progress = BackupProgress(phase: .scanning)
+    var copyStartedAt: Date?
+
+    var yearText: String { String(year) }
+
+    var estimatedSecondsRemaining: TimeInterval? {
+        Format.remaining(progress, since: copyStartedAt)
     }
 }
 
@@ -43,8 +55,25 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
     let message: String?
     /// The project folder to reveal in Finder.
     let folderPath: String?
+    /// `nil` for entries saved before moving years existed; those are card imports.
+    var kind: Kind? = nil
+
+    enum Kind: String, Codable {
+        case cardImport
+        case migration
+    }
 
     var summary: String {
+        if kind == .migration {
+            switch outcome {
+            case .completed:
+                return "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · to \(cardName)"
+            case .completedWithErrors:
+                return "\(Format.count(filesCopied, "file")) moved to \(cardName) · \(failedFiles) stayed on this Mac"
+            case .failed, .cancelled:
+                return message ?? "Move stopped"
+            }
+        }
         switch outcome {
         case .completed:
             return filesCopied == 0
@@ -65,6 +94,15 @@ enum Format {
 
     static func count(_ number: Int, _ singular: String, _ plural: String? = nil) -> String {
         "\(number.formatted()) \(number == 1 ? singular : (plural ?? singular + "s"))"
+    }
+
+    /// Time left, from the copy speed so far.
+    static func remaining(_ progress: BackupProgress, since start: Date?) -> TimeInterval? {
+        guard let start, progress.bytesProcessed > 0 else { return nil }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 3 else { return nil }
+        let bytesPerSecond = Double(progress.bytesProcessed) / elapsed
+        return Double(max(0, progress.bytesToCopy - progress.bytesProcessed)) / bytesPerSecond
     }
 
     static func duration(_ seconds: TimeInterval) -> String {

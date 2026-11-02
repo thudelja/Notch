@@ -1,6 +1,14 @@
 import Foundation
 
-/// Lists every regular file on a card, skipping operating-system metadata and symbolic links.
+public struct ScanResult: Sendable {
+    public var files: [SourceFile] = []
+    /// Relative paths of every folder found, parents before children.
+    public var directories: [String] = []
+    public var failures: [BackupFailure] = []
+}
+
+/// Lists every regular file on a card (or any folder), skipping operating-system metadata and
+/// symbolic links.
 public struct CardScanner {
     static let resourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
@@ -14,19 +22,13 @@ public struct CardScanner {
     }
 
     /// Throws only when the card itself can't be read; unreadable subfolders are reported as failures.
-    public func scan(_ source: URL) throws -> (files: [SourceFile], failures: [BackupFailure]) {
-        var files: [SourceFile] = []
-        var failures: [BackupFailure] = []
-        try scan(source.standardizedFileURL, relativeComponents: [], into: &files, failures: &failures)
-        return (files, failures)
+    public func scan(_ source: URL) throws -> ScanResult {
+        var result = ScanResult()
+        try scan(source.standardizedFileURL, relativeComponents: [], into: &result)
+        return result
     }
 
-    private func scan(
-        _ directory: URL,
-        relativeComponents: [String],
-        into files: inout [SourceFile],
-        failures: inout [BackupFailure]
-    ) throws {
+    private func scan(_ directory: URL, relativeComponents: [String], into result: inout ScanResult) throws {
         try Task.checkCancellation()
 
         let children: [URL]
@@ -42,7 +44,7 @@ public struct CardScanner {
                     ? BackupError.accessDenied(path: directory.path)
                     : BackupError.sourceUnreadable(path: directory.path, reason: error.localizedDescription)
             }
-            failures.append(BackupFailure(
+            result.failures.append(BackupFailure(
                 relativePath: relativeComponents.joined(separator: "/") + "/",
                 message: error.localizedDescription
             ))
@@ -58,16 +60,17 @@ public struct CardScanner {
             do {
                 values = try child.resourceValues(forKeys: Self.resourceKeys)
             } catch {
-                failures.append(BackupFailure(relativePath: components.joined(separator: "/"), message: error.localizedDescription))
+                result.failures.append(BackupFailure(relativePath: components.joined(separator: "/"), message: error.localizedDescription))
                 continue
             }
 
             if values.isSymbolicLink == true {
                 continue
             } else if values.isDirectory == true {
-                try scan(child, relativeComponents: components, into: &files, failures: &failures)
+                result.directories.append(components.joined(separator: "/"))
+                try scan(child, relativeComponents: components, into: &result)
             } else if values.isRegularFile == true {
-                files.append(SourceFile(
+                result.files.append(SourceFile(
                     url: child,
                     relativePath: components.joined(separator: "/"),
                     size: Int64(values.fileSize ?? 0),

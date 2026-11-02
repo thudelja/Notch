@@ -79,11 +79,14 @@ public struct BackupEngine {
     ///   - destinationRoot: Folder that contains every target folder. It must exist or be creatable,
     ///     and it holds the temporary staging folder.
     ///   - createFolders: Extra (empty) folders to create, e.g. a video project's Project/Assets/Export.
+    ///   - fileCompleted: Called as soon as each file is safely in the destination (copied and
+    ///     verified, or an identical copy was already there).
     public func copy(
         _ items: [CopyItem],
         from source: URL,
         to destinationRoot: URL,
         createFolders: [URL] = [],
+        fileCompleted: (ProcessedFile) -> Void = { _ in },
         progress: @escaping ProgressHandler = { _ in }
     ) throws -> BackupResult {
         let startedAt = Date()
@@ -109,7 +112,9 @@ public struct BackupEngine {
                     plan.append(PlannedCopy(file: item.file, destination: target))
                 case .alreadyPresent(let existing):
                     alreadyBackedUp += 1
-                    processed.append(ProcessedFile(source: item.file, destination: existing, wasCopied: false))
+                    let done = ProcessedFile(source: item.file, destination: existing, wasCopied: false)
+                    processed.append(done)
+                    fileCompleted(done)
                 }
             } catch is CancellationError {
                 throw CancellationError()
@@ -159,7 +164,9 @@ public struct BackupEngine {
                     }
                     filesCopied += 1
                     bytesCopied += item.file.size
-                    processed.append(ProcessedFile(source: item.file, destination: item.destination, wasCopied: true))
+                    let done = ProcessedFile(source: item.file, destination: item.destination, wasCopied: true)
+                    processed.append(done)
+                    fileCompleted(done)
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -219,8 +226,8 @@ public struct BackupEngine {
     // MARK: - Destination
 
     private func prepare(destinationRoot: URL, source: URL) throws {
-        let sourcePath = canonicalPath(of: source)
-        let destinationPath = canonicalPath(of: destinationRoot)
+        let sourcePath = fileManager.canonicalPath(of: source)
+        let destinationPath = fileManager.canonicalPath(of: destinationRoot)
         let sourcePrefix = sourcePath.hasSuffix("/") ? sourcePath : sourcePath + "/"
         if destinationPath == sourcePath || destinationPath.hasPrefix(sourcePrefix) {
             throw BackupError.destinationInsideSource
@@ -242,21 +249,6 @@ public struct BackupEngine {
         } catch {
             throw BackupError.destinationUnavailable(path: destinationRoot.path)
         }
-    }
-
-    /// Resolves symlinks in the part of the path that exists, then re-appends the rest.
-    private func canonicalPath(of url: URL) -> String {
-        var existing = url.standardizedFileURL
-        var missing: [String] = []
-        while !fileManager.fileExists(atPath: existing.path), existing.path != "/" {
-            missing.insert(existing.lastPathComponent, at: 0)
-            existing.deleteLastPathComponent()
-        }
-        var resolved = existing.resolvingSymlinksInPath()
-        for component in missing {
-            resolved.appendPathComponent(component)
-        }
-        return resolved.path
     }
 
     private func checkVolumesArePresent(source: URL, destinationRoot: URL) throws {
@@ -315,7 +307,8 @@ public struct BackupEngine {
     private func isBackup(of file: SourceFile, at candidate: URL) throws -> Bool {
         let values = try candidate.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         guard let size = values.fileSize, Int64(size) == file.size else { return false }
-        if let modified = values.contentModificationDate,
+        if !options.compareDuplicateContents,
+           let modified = values.contentModificationDate,
            abs(modified.timeIntervalSince(file.modificationDate)) <= Self.timestampTolerance {
             return true
         }
@@ -382,6 +375,7 @@ public struct BackupEngine {
             }
         }
 
+        Self.copyExtendedAttributes(from: file.url, to: temporary)
         var attributes: [FileAttributeKey: Any] = [.modificationDate: file.modificationDate]
         if let created = file.creationDate {
             attributes[.creationDate] = created
@@ -403,6 +397,14 @@ public struct BackupEngine {
             hasher.update(data: chunk)
         }
         return hasher.finalize()
+    }
+
+    /// Carries over Finder tags, labels and other extended attributes. Best effort: a destination
+    /// that can't store them doesn't fail the copy.
+    static func copyExtendedAttributes(from source: URL, to destination: URL) {
+        #if canImport(Darwin)
+        _ = copyfile(source.path, destination.path, nil, copyfile_flags_t(COPYFILE_XATTR))
+        #endif
     }
 
     static func disableCaching(_ handle: FileHandle) {
@@ -438,6 +440,23 @@ public struct BackupEngine {
 }
 
 // MARK: - Helpers
+
+extension FileManager {
+    /// Resolves symlinks in the part of the path that exists, then re-appends the rest.
+    func canonicalPath(of url: URL) -> String {
+        var existing = url.standardizedFileURL
+        var missing: [String] = []
+        while !fileExists(atPath: existing.path), existing.path != "/" {
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        var resolved = existing.resolvingSymlinksInPath()
+        for component in missing {
+            resolved.appendPathComponent(component)
+        }
+        return resolved.path
+    }
+}
 
 struct PlannedCopy {
     let file: SourceFile

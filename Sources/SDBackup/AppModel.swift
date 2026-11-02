@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var active: ActiveBackup? = nil
     @Published private(set) var importQueue: [ImportJob] = []
     @Published private(set) var history: [HistoryEntry] = []
+    @Published private(set) var migration: ActiveMigration? = nil
     @Published private var analysisQueue: [VolumeInfo] = []
     @Published var launchAtLogin: Bool {
         didSet {
@@ -64,7 +65,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var isBusy: Bool { active != nil || analyzing != nil }
+    var isBusy: Bool { active != nil || analyzing != nil || migration != nil }
 
     private let notifier = Notifier()
     private let settingsWindow: SettingsWindowController
@@ -72,6 +73,8 @@ final class AppModel: ObservableObject {
     private var analysisTask: Task<Void, Never>?
     private var copyTask: Task<Void, Never>?
     private var stopReason: String?
+    private var migrationTask: Task<Void, Never>?
+    private var migrationStopReason: String?
 
     private static let historyKey = "importHistory"
     private static let historyLimit = 25
@@ -315,7 +318,8 @@ final class AppModel: ObservableObject {
     }
 
     private func startNextImport() {
-        while active == nil, !importQueue.isEmpty {
+        // Imports wait while a year is being moved, in case they belong to that year.
+        while active == nil, migration == nil, !importQueue.isEmpty {
             let job = importQueue.removeFirst()
             if FileManager.default.fileExists(atPath: job.volume.url.path) {
                 run(job)
@@ -328,7 +332,12 @@ final class AppModel: ObservableObject {
     private func run(_ job: ImportJob) {
         let backup = ActiveBackup(volume: job.volume, title: job.title)
         let backupID = backup.id
-        let destination = settings.destinationURL
+        // Projects that were moved to another drive are imported there. If that drive isn't
+        // connected, the copy stops straight away with "connect the drive".
+        let roots = Set(job.projects.map(\.rootPath))
+        let destination = roots.count == 1
+            ? URL(fileURLWithPath: roots.first!, isDirectory: true)
+            : settings.destinationURL
         let options = BackupOptions(verifyCopies: settings.verifyCopies)
 
         active = backup
@@ -457,8 +466,13 @@ final class AppModel: ObservableObject {
             filesAlreadyBackedUp: result?.filesAlreadyBackedUp ?? 0,
             failedFiles: result?.failures.count ?? 0,
             message: message,
-            folderPath: folder?.path
+            folderPath: folder?.path,
+            kind: .cardImport
         )
+        appendHistory(entry)
+    }
+
+    private func appendHistory(_ entry: HistoryEntry) {
         history.insert(entry, at: 0)
         if history.count > Self.historyLimit {
             history.removeLast(history.count - Self.historyLimit)
@@ -568,19 +582,189 @@ final class AppModel: ObservableObject {
     func quit() {
         if isBusy {
             let alert = NSAlert()
-            alert.messageText = active != nil ? "An import is in progress" : "A card is being read"
-            alert.informativeText = "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted."
+            if migration != nil {
+                alert.messageText = "A year is being moved"
+                alert.informativeText = "If you quit now, files already moved stay on the drive and the rest stay on this Mac. Move the year again to finish."
+            } else {
+                alert.messageText = active != nil ? "An import is in progress" : "A card is being read"
+                alert.informativeText = "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted."
+            }
             alert.addButton(withTitle: "Keep Going")
             alert.addButton(withTitle: "Quit")
             AppActivation.bringToFront()
             guard alert.runModal() == .alertSecondButtonReturn else { return }
             copyTask?.cancel()
             analysisTask?.cancel()
+            migrationTask?.cancel()
         }
         NSApp.terminate(nil)
     }
 
+    // MARK: - Moving a year to another drive
+
+    /// Year folders in the projects folder that can be moved.
+    func availableYears() -> [Int] {
+        YearMigrator.years(in: settings.destinationURL)
+    }
+
+    /// Asks where to move `year`, confirms, then moves it in the background.
+    func moveYear(_ year: Int) {
+        guard migration == nil else { return }
+        let yearText = String(year)
+        guard active == nil, importQueue.isEmpty else {
+            showAlert("Wait for the import to finish", "\(yearText) can be moved once the current import is done.")
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Move \(yearText) to Another Drive"
+        panel.message = "Choose a folder on the drive, for example a Projects folder on your SSD. \(yearText) is moved into it with the same folder structure."
+        panel.prompt = "Move Here"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: settings.lastMigrationPath ?? "/Volumes", isDirectory: true)
+        AppActivation.bringToFront()
+        guard panel.runModal() == .OK, let destinationRoot = panel.url else { return }
+
+        let sourceRoot = settings.destinationURL
+        if destinationRoot.standardizedFileURL.path == sourceRoot.standardizedFileURL.path {
+            showAlert("Choose another folder", "\(yearText) is already in that folder. Pick a folder on the other drive.")
+            return
+        }
+
+        let driveName = (try? destinationRoot.resourceValues(forKeys: [.volumeLocalizedNameKey]))?.volumeLocalizedName
+            ?? destinationRoot.lastPathComponent
+        let target = (destinationRoot.appendingPathComponent(yearText).path as NSString).abbreviatingWithTildeInPath
+        let confirm = NSAlert()
+        confirm.alertStyle = .warning
+        confirm.messageText = "Move \(yearText) to “\(driveName)”?"
+        confirm.informativeText = """
+        Everything in \(yearText), including photos, videos and editing projects, is copied to \(target). \
+        Each file is checked against the original and then deleted from this Mac.
+
+        Projects from \(yearText) will open from “\(driveName)” from now on. New projects still go to this Mac. \
+        Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.
+        """
+        confirm.addButton(withTitle: "Move")
+        confirm.addButton(withTitle: "Cancel")
+        AppActivation.bringToFront()
+        guard confirm.runModal() == .alertFirstButtonReturn else { return }
+
+        settings.lastMigrationPath = destinationRoot.path
+        startMigration(year: year, from: sourceRoot, to: destinationRoot, driveName: driveName)
+    }
+
+    func cancelMigration() {
+        migrationStopReason = "Stopped. Files already moved are on the drive and the rest are still on this Mac. Move the year again to finish."
+        migrationTask?.cancel()
+    }
+
+    private func startMigration(year: Int, from sourceRoot: URL, to destinationRoot: URL, driveName: String) {
+        let current = ActiveMigration(year: year, destinationRoot: destinationRoot, driveName: driveName)
+        let migrationID = current.id
+        migration = current
+        migrationStopReason = nil
+        log.write("Moving \(current.yearText) from \(sourceRoot.path) to \(destinationRoot.path)")
+        notify("Moving \(current.yearText) to “\(driveName)”", "Keep the drive connected until it’s finished.")
+
+        migrationTask = Task.detached(priority: .userInitiated) { [self] in
+            let activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled],
+                reason: "Moving a year of projects to another drive"
+            )
+            defer { ProcessInfo.processInfo.endActivity(activity) }
+
+            let outcome: Result<MigrationResult, Error>
+            do {
+                let result = try YearMigrator().moveYear(year, from: sourceRoot, to: destinationRoot) { progress in
+                    Task { @MainActor in self.updateMigration(progress, migrationID: migrationID) }
+                }
+                outcome = .success(result)
+            } catch {
+                outcome = .failure(error)
+            }
+            await self.migrationFinished(current, sourceRoot: sourceRoot, outcome: outcome)
+        }
+    }
+
+    private func updateMigration(_ progress: BackupProgress, migrationID: UUID) {
+        guard var current = migration, current.id == migrationID else { return }
+        if progress.phase == .copying, current.copyStartedAt == nil {
+            current.copyStartedAt = Date()
+        }
+        current.progress = progress
+        migration = current
+    }
+
+    private func migrationFinished(_ finished: ActiveMigration, sourceRoot: URL, outcome: Result<MigrationResult, Error>) {
+        guard migration?.id == finished.id else { return }
+        migration = nil
+        migrationTask = nil
+        let year = finished.yearText
+
+        switch outcome {
+        case .success(let result):
+            let relinked = library.moveProjects(year: finished.year, from: sourceRoot.path, to: finished.destinationRoot.path)
+            let movedCount = result.filesMoved + result.duplicatesRemoved
+            let moved = "\(Format.count(movedCount, "file")) (\(Format.bytes(result.bytesMoved)))"
+            var lines = [
+                "Moved \(year) to \(result.destination.path): \(result.filesMoved) copied, "
+                    + "\(result.duplicatesRemoved) already there, \(result.failures.count) failed, "
+                    + "\(result.itemsLeftBehind) left on this Mac; \(relinked) project(s) now open from \(finished.driveName)",
+            ]
+            lines += result.failures.prefix(500).map { "    FAILED \($0.relativePath): \($0.message)" }
+            log.write(lines)
+            recordMigration(result.isComplete ? .completed : .completedWithErrors, finished, result: result)
+            if result.isComplete {
+                notify("\(year) moved to “\(finished.driveName)”", "Moved \(moved). Projects from \(year) now open from the drive.")
+            } else {
+                let stayed = result.failures.count + result.itemsLeftBehind
+                notify(
+                    "\(year) moved, with exceptions",
+                    "Moved \(moved). \(Format.count(stayed, "item")) stayed on this Mac. Open the log for details."
+                )
+            }
+        case .failure(let error):
+            let cancelled = error is CancellationError
+            let message = cancelled
+                ? migrationStopReason ?? "Stopped. Move the year again to finish."
+                : error.localizedDescription
+            log.write("Moving \(year) stopped: \(message)")
+            recordMigration(cancelled ? .cancelled : .failed, finished, result: nil, message: message)
+            notify(cancelled ? "Move stopped" : "Couldn’t move \(year)", message)
+        }
+        migrationStopReason = nil
+        startNextImport()
+    }
+
+    private func recordMigration(_ outcome: HistoryEntry.Outcome, _ migration: ActiveMigration, result: MigrationResult?, message: String? = nil) {
+        appendHistory(HistoryEntry(
+            title: "Moved \(migration.yearText)",
+            cardName: migration.driveName,
+            cardID: "",
+            date: Date(),
+            outcome: outcome,
+            filesCopied: result.map { $0.filesMoved + $0.duplicatesRemoved } ?? 0,
+            bytesCopied: result?.bytesMoved ?? 0,
+            filesAlreadyBackedUp: result?.duplicatesRemoved ?? 0,
+            failedFiles: result.map { $0.failures.count + $0.itemsLeftBehind } ?? 0,
+            message: message,
+            folderPath: (result?.destination ?? migration.destinationRoot).path,
+            kind: .migration
+        ))
+    }
+
     // MARK: - Helpers
+
+    private func showAlert(_ title: String, _ message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        AppActivation.bringToFront()
+        _ = alert.runModal()
+    }
 
     private func notify(_ title: String, _ body: String) {
         guard settings.notificationsEnabled else { return }

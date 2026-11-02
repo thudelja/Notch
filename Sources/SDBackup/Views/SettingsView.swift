@@ -4,6 +4,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var settings: AppSettings
+    @State private var years: [Int] = []
+    @State private var selectedYear = 0
 
     var body: some View {
         Form {
@@ -18,6 +20,35 @@ struct SettingsView: View {
                     Button("Change…") { model.chooseDestination() }
                 }
                 Text("Photos: 2026 › Photo › 11 November › 02.11.2026 Name › Camera\nVideos: 2026 › Video › 11 November › 02.11.2026 Name › Media › Camera, plus Project, Assets and Export folders.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("Move a year to another drive") {
+                if let migration = model.migration {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(verbatim: "Moving \(migration.yearText) to “\(migration.driveName)”…")
+                        ProgressView(value: migration.progress.phase == .copying ? migration.progress.fractionCompleted : nil)
+                        Button("Stop") { model.cancelMigration() }
+                    }
+                } else if years.isEmpty {
+                    Text("There are no year folders in the projects folder yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack {
+                        Picker("Year", selection: $selectedYear) {
+                            ForEach(years, id: \.self) { year in
+                                Text(verbatim: String(year)).tag(year)
+                            }
+                        }
+                        .fixedSize()
+                        Spacer()
+                        Button("Move to Drive…") { model.moveYear(selectedYear) }
+                            .disabled(!years.contains(selectedYear) || model.active != nil)
+                    }
+                }
+                Text("Moves the whole year (photos, videos and editing projects) to a folder you choose, for example on your SSD, keeping the same structure. Each file is verified before it’s deleted from this Mac. Moved projects keep working from the drive; new projects still go to this Mac.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -65,8 +96,18 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: 760)
         .onChange(of: settings.detection) { _ in model.refreshConnectedVolumes() }
+        .onChange(of: model.migration == nil) { _ in reloadYears() }
+        .onChange(of: settings.destinationPath) { _ in reloadYears() }
+        .onAppear { reloadYears() }
+    }
+
+    private func reloadYears() {
+        years = model.availableYears()
+        if !years.contains(selectedYear), let oldest = years.first {
+            selectedYear = oldest
+        }
     }
 }
 

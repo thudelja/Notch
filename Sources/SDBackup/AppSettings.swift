@@ -33,6 +33,7 @@ final class AppSettings: ObservableObject {
         static let verify = "verifyCopies"
         static let eject = "ejectWhenDone"
         static let notifications = "notificationsEnabled"
+        static let lastMigration = "lastMigrationPath"
     }
 
     private let defaults: UserDefaults
@@ -75,6 +76,12 @@ final class AppSettings: ObservableObject {
         verifyCopies = defaults.bool(forKey: Key.verify)
         ejectWhenDone = defaults.bool(forKey: Key.eject)
         notificationsEnabled = defaults.bool(forKey: Key.notifications)
+    }
+
+    /// The folder a year was last moved to, offered first next time.
+    var lastMigrationPath: String? {
+        get { defaults.string(forKey: Key.lastMigration) }
+        set { defaults.set(newValue, forKey: Key.lastMigration) }
     }
 
     var destinationURL: URL {

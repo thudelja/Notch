@@ -75,6 +75,34 @@ you just get a notification. Choose **Not Now** to close the panel; you can star
 - **Audio, and anything else without camera info:** shown as "No camera info". The name you type
   is remembered for that card, for example "Zoom H5" for a recorder card.
 
+## Moving a year to an SSD
+
+When a year is finished, or your Mac runs low on space, move the whole year to an external drive.
+Open **Settings › Move a year to another drive**, pick the year and click **Move to Drive…**, then
+choose a folder on the drive (for example `SSD/Projects`). The year is moved into it with exactly
+the same structure:
+
+```
+Mac:  ~/Pictures/Projects/2026/…   →   SSD:  /Volumes/SSD/Projects/2026/…
+```
+
+- **Safe, file by file:** each file is copied, read back from the SSD and checked (SHA-256), then
+  deleted from the Mac. Anything that can't be copied or checked stays on the Mac and is listed
+  in the log.
+- **Interruptions are fine:** if you stop the move, pull the drive or quit, every file is either
+  moved or still on the Mac. Moving the year again finishes the job. Files already on the SSD
+  are recognised by comparing their bytes.
+- **Everything moves:** photos, videos, audio, editing projects, empty Project/Assets/Export
+  folders, file dates and Finder tags.
+- **Afterwards:** moved projects stay in your recent list and open from the SSD. Adding a card
+  to one of them imports straight onto the SSD. If the SSD isn't connected, the Import panel
+  tells you. New projects are still created on the Mac; move them the same way later, and they
+  merge into the year folder on the SSD.
+- Editing projects that link to moved media (Premiere Pro, DaVinci Resolve, …) may ask you to
+  relink once.
+
+Imports wait while a year is being moved. Progress appears in the menu bar panel.
+
 ## Requirements
 
 - macOS 13 Ventura or later (Apple silicon or Intel)
@@ -129,6 +157,7 @@ ejected. If macOS says the disk is still in use, eject it again.
   SSDs are never included.
 - **Verify** and **eject**.
 - **Open at login** and **notifications**.
+- **Move a year to another drive** (see above).
 - **Forget Imported Files** offers every file on every card again. **Forget Camera Names**
   resets the folder names you've given cameras.
 
@@ -153,6 +182,7 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackupCore/CameraNames.swift` | `Canon EOS R5` → `R5`, `ILCE-7M4` → `A7 IV`, … |
 | `Sources/SDBackupCore/ProjectLayout.swift` | Folder naming, the copy plan, and the per-card import record. |
 | `Sources/SDBackupCore/BackupEngine.swift` | Verified, non-destructive, crash-safe copying. |
+| `Sources/SDBackupCore/YearMigrator.swift` | Moves a year folder to another drive, deleting each original after verification. |
 | `Sources/SDBackup/AppModel.swift` | The read → choose project → import flow. |
 | `Sources/SDBackup/ImportDraft.swift` | Your per-date project choices and camera names. |
 | `Sources/SDBackup/LibraryStore.swift` | Saved projects, camera names and import records. |

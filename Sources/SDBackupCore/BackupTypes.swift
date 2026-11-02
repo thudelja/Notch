@@ -23,10 +23,14 @@ public struct BackupOptions: Sendable {
     public var verifyCopies: Bool
     /// Free space, in bytes, that must remain on the destination after the backup.
     public var reservedFreeSpace: Int64
+    /// Treat a same-named file at the destination as a duplicate only if its bytes match, even when
+    /// size and date already match. Used when the source is deleted afterwards.
+    public var compareDuplicateContents: Bool
 
-    public init(verifyCopies: Bool = true, reservedFreeSpace: Int64 = 200 * 1024 * 1024) {
+    public init(verifyCopies: Bool = true, reservedFreeSpace: Int64 = 200 * 1024 * 1024, compareDuplicateContents: Bool = false) {
         self.verifyCopies = verifyCopies
         self.reservedFreeSpace = reservedFreeSpace
+        self.compareDuplicateContents = compareDuplicateContents
     }
 }
 
@@ -120,6 +124,7 @@ public enum BackupError: LocalizedError, Equatable {
     case sourceDisappeared
     case destinationUnavailable(path: String)
     case destinationInsideSource
+    case destinationIsSource
     case insufficientSpace(needed: Int64, available: Int64)
     case sizeMismatch(expected: Int64, actual: Int64)
     case verificationFailed
@@ -136,7 +141,9 @@ public enum BackupError: LocalizedError, Equatable {
         case let .destinationUnavailable(path):
             return "The backup folder \(path) isn’t available. If it’s on an external drive, connect the drive and try again."
         case .destinationInsideSource:
-            return "The backup folder is on the card being backed up. Choose a folder on another drive."
+            return "The destination is inside the folder being copied. Choose a folder on another drive."
+        case .destinationIsSource:
+            return "The destination is the same folder as the source. Choose a folder on the other drive."
         case let .insufficientSpace(needed, available):
             return "Not enough free space in the backup folder: \(Self.format(needed)) needed, \(Self.format(available)) available."
         case let .sizeMismatch(expected, actual):

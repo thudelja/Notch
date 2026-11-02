@@ -88,7 +88,8 @@ final class ImportDraft: ObservableObject, Identifiable {
             options.append(ChoiceOption(choice: .sameAs(summary.day), title: "Same as \(newProjectTitle(summary.day))"))
         }
         for project in recentProjects {
-            options.append(ChoiceOption(choice: .existing(project.id), title: "\(project.name) · \(project.startDay.folderDate)"))
+            let missing = isOnConnectedDrive(project) ? "" : " (drive not connected)"
+            options.append(ChoiceOption(choice: .existing(project.id), title: "\(project.name) · \(project.startDay.folderDate)\(missing)"))
         }
         options.append(ChoiceOption(choice: .skip, title: "Skip for now"))
         return options
@@ -124,8 +125,10 @@ final class ImportDraft: ObservableObject, Identifiable {
                 if choice(for: owner) != .newProject || trimmedName(owner).isEmpty {
                     return "Type a name for the new project (\(owner.folderDate))."
                 }
-            case .existing:
-                break
+            case .existing(let id):
+                if let project = recentProjects.first(where: { $0.id == id }), !isOnConnectedDrive(project) {
+                    return "“\(project.name)” was moved to another drive. Connect it (\(project.rootPath)) or choose another project."
+                }
             }
             importsSomething = true
         }
@@ -161,6 +164,11 @@ final class ImportDraft: ObservableObject, Identifiable {
             }
         }
         return result
+    }
+
+    /// Projects moved to an external drive are only available while it is connected.
+    private func isOnConnectedDrive(_ project: ProjectInfo) -> Bool {
+        FileManager.default.fileExists(atPath: project.rootPath)
     }
 
     func cameraName(for item: MediaItem) -> String {
