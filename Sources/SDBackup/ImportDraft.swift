@@ -127,7 +127,7 @@ final class ImportDraft: ObservableObject, Identifiable {
                 }
             case .existing(let id):
                 if let project = recentProjects.first(where: { $0.id == id }), !isOnConnectedDrive(project) {
-                    return "“\(project.name)” was moved to another drive. Connect it (\(project.rootPath)) or choose another project."
+                    return "“\(project.name)” is on a drive that isn’t connected. Connect it or choose another project."
                 }
             }
             importsSomething = true
@@ -138,8 +138,9 @@ final class ImportDraft: ObservableObject, Identifiable {
     // MARK: - Result
 
     /// The project for every day that isn't skipped. A new project starts on the earliest day
-    /// assigned to it.
-    func resolvedProjects(store: LibraryStore, rootPath: String) -> [ShootDay: ProjectInfo] {
+    /// assigned to it and is created in the projects folder at `root`. Nil when that folder
+    /// isn't available.
+    func resolvedProjects(store: LibraryStore, root: URL) -> [ShootDay: ProjectInfo]? {
         var result: [ShootDay: ProjectInfo] = [:]
         var newProjectDays: [ShootDay: [ShootDay]] = [:]
         for summary in days {
@@ -158,7 +159,7 @@ final class ImportDraft: ObservableObject, Identifiable {
         }
         for (owner, members) in newProjectDays {
             guard choice(for: owner) == .newProject, let start = members.min() else { continue }
-            let project = store.projectNamed(trimmedName(owner), startDay: start, rootPath: rootPath)
+            guard let project = store.projectNamed(trimmedName(owner), startDay: start, in: root) else { return nil }
             for day in members {
                 result[day] = project
             }
@@ -168,7 +169,7 @@ final class ImportDraft: ObservableObject, Identifiable {
 
     /// Projects moved to an external drive are only available while it is connected.
     private func isOnConnectedDrive(_ project: ProjectInfo) -> Bool {
-        FileManager.default.fileExists(atPath: project.rootPath)
+        !project.rootPath.isEmpty && FileManager.default.fileExists(atPath: project.rootPath)
     }
 
     func cameraName(for item: MediaItem) -> String {

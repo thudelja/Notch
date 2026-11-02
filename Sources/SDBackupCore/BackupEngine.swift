@@ -206,14 +206,31 @@ public struct BackupEngine {
         sanitizedFolderName(name, fallback: "Untitled Card")
     }
 
+    /// Names are made safe for every file system the folders may end up on (APFS, exFAT, NTFS),
+    /// so the Mac and a Windows version produce identical folder names:
+    /// `/ \ : * ? " < > |` and control characters become "-", leading dots and trailing dots or
+    /// spaces are removed, and Windows device names (CON, NUL, COM1, …) get a "_" prefix.
     public static func sanitizedFolderName(_ name: String, fallback: String) -> String {
         var result = name
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
+            .components(separatedBy: forbiddenNameCharacters)
+            .joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         while result.hasPrefix(".") { result.removeFirst() }
-        return result.isEmpty ? fallback : result
+        while let last = result.last, last == "." || last == " " { result.removeLast() }
+        guard !result.isEmpty else { return fallback }
+
+        let stem = result.split(separator: ".", maxSplits: 1).first.map(String.init) ?? result
+        if reservedDeviceNames.contains(stem.trimmingCharacters(in: .whitespaces).uppercased()) {
+            result = "_" + result
+        }
+        return result
     }
+
+    private static let forbiddenNameCharacters = CharacterSet(charactersIn: "/\\:*?\"<>|").union(.controlCharacters)
+
+    private static let reservedDeviceNames: Set<String> = Set(
+        ["CON", "PRN", "AUX", "NUL"] + (1...9).flatMap { ["COM\($0)", "LPT\($0)"] }
+    )
 
     static func numberedVariant(of url: URL, number: Int) -> URL {
         let directory = url.deletingLastPathComponent()

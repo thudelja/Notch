@@ -1,25 +1,51 @@
 import Foundation
 
 /// A shoot that cards are imported into.
+///
+/// Saved records contain no absolute paths: a project names the projects folder ("library") it
+/// lives in by ID, and its folders are derived from its name and start day (see `ProjectLayout`).
+/// That keeps records valid when a drive is mounted under another name, or read on another OS.
 public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
     /// The first shoot day. Decides the year and month folders and the date in the folder name.
     public var startDay: ShootDay
-    /// The projects folder this project lives in.
-    public var rootPath: String
+    /// The projects folder this project lives in (its `.sdbackup/library.json` ID).
+    public var libraryID: UUID
     public var lastUsed: Date
+    /// Where that projects folder is on this computer right now, or "" when its drive isn't
+    /// connected. Filled in when loading; never saved.
+    public var rootPath: String = ""
 
-    public init(id: UUID = UUID(), name: String, startDay: ShootDay, rootPath: String, lastUsed: Date = Date()) {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, startDay, libraryID, lastUsed
+    }
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        startDay: ShootDay,
+        libraryID: UUID = UUID(),
+        rootPath: String = "",
+        lastUsed: Date = Date()
+    ) {
         self.id = id
         self.name = name
         self.startDay = startDay
+        self.libraryID = libraryID
         self.rootPath = rootPath
         self.lastUsed = lastUsed
     }
 
     /// "02.11.2026 Ana Wedding"
     public var folderName: String { ProjectLayout.projectFolderName(name: name, startDay: startDay) }
+
+    /// The record as saved: without this computer's path.
+    public var portable: ProjectInfo {
+        var copy = self
+        copy.rootPath = ""
+        return copy
+    }
 }
 
 /// Everything needed to copy a card's files into their projects.
@@ -102,12 +128,25 @@ public enum ProjectLayout {
         return ImportPlan(items: copies, foldersToCreate: folders)
     }
 
+    /// The photo folder relative to the projects folder, as path components:
+    /// ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"]. The same on every OS.
+    public static func relativePhotoFolder(for project: ProjectInfo) -> [String] {
+        relativeFolder(project, branch: "Photo")
+    }
+
+    /// ["2026", "Video", "11 November", "02.11.2026 Ana Wedding"]
+    public static func relativeVideoFolder(for project: ProjectInfo) -> [String] {
+        relativeFolder(project, branch: "Video")
+    }
+
+    private static func relativeFolder(_ project: ProjectInfo, branch: String) -> [String] {
+        [String(project.startDay.year), branch, monthFolderName(project.startDay), project.folderName]
+    }
+
     private static func projectFolder(_ project: ProjectInfo, branch: String) -> URL {
-        URL(fileURLWithPath: project.rootPath, isDirectory: true)
-            .appendingPathComponent(String(project.startDay.year), isDirectory: true)
-            .appendingPathComponent(branch, isDirectory: true)
-            .appendingPathComponent(monthFolderName(project.startDay), isDirectory: true)
-            .appendingPathComponent(project.folderName, isDirectory: true)
+        relativeFolder(project, branch: branch).reduce(URL(fileURLWithPath: project.rootPath, isDirectory: true)) {
+            $0.appendingPathComponent($1, isDirectory: true)
+        }
     }
 }
 

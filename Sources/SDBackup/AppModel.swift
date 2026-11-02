@@ -90,6 +90,7 @@ final class AppModel: ObservableObject {
 
         configureLoginItemOnFirstLaunch()
         notifier.setUp()
+        library.library(at: settings.destinationURL)
         observeVolumes()
         refreshConnectedVolumes()
 
@@ -146,6 +147,7 @@ final class AppModel: ObservableObject {
     }
 
     private func volumeDidMount(_ url: URL) {
+        library.refreshLocations() // A drive with moved projects may have been connected.
         refreshConnectedVolumes()
         guard settings.autoBackupEnabled,
               let volume = connectedVolumes.first(where: { $0.id == url.path })
@@ -160,6 +162,7 @@ final class AppModel: ObservableObject {
 
     private func volumeDidUnmount(_ url: URL) {
         connectedVolumes.removeAll { $0.id == url.path }
+        library.refreshLocations()
         stopWork(on: url.path, reason: "The card was removed before the import finished. Insert it again to finish.")
     }
 
@@ -267,6 +270,7 @@ final class AppModel: ObservableObject {
     }
 
     private func makeDraft(for volume: VolumeInfo, analysis: CardAnalysis) -> ImportDraft {
+        library.refreshLocations()
         var names: [String: String] = [:]
         for model in analysis.cameraModels {
             names[model] = library.cameraName(forModel: model, make: analysis.make(forModel: model))
@@ -293,7 +297,18 @@ final class AppModel: ObservableObject {
 
     func startImport(_ draft: ImportDraft) {
         guard draft.isReady else { return }
-        let projects = draft.resolvedProjects(store: library, rootPath: settings.destinationURL.path)
+        library.refreshLocations()
+        guard let projects = draft.resolvedProjects(store: library, root: settings.destinationURL) else {
+            showAlert(
+                "The projects folder isn’t available",
+                "\(settings.abbreviatedDestination) can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings."
+            )
+            return
+        }
+        if let offline = projects.values.first(where: { $0.rootPath.isEmpty }) {
+            showAlert("Connect the drive", "“\(offline.name)” is on a drive that isn’t connected. Connect it and click Import again.")
+            return
+        }
         let plan = ProjectLayout.plan(items: draft.analysis.items, projects: projects) { draft.cameraName(for: $0) }
         library.rememberCameraNames(draft.cameraNames, cardID: draft.volume.cardID)
         drafts.removeAll { $0.id == draft.id }
@@ -562,6 +577,7 @@ final class AppModel: ObservableObject {
         AppActivation.bringToFront()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         settings.destinationPath = url.path
+        library.library(at: url)
         refreshConnectedVolumes()
     }
 
@@ -707,7 +723,7 @@ final class AppModel: ObservableObject {
 
         switch outcome {
         case .success(let result):
-            let relinked = library.moveProjects(year: finished.year, from: sourceRoot.path, to: finished.destinationRoot.path)
+            let relinked = library.moveProjects(year: finished.year, from: sourceRoot, to: finished.destinationRoot)
             let movedCount = result.filesMoved + result.duplicatesRemoved
             let moved = "\(Format.count(movedCount, "file")) (\(Format.bytes(result.bytesMoved)))"
             var lines = [

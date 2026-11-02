@@ -161,8 +161,14 @@ ejected. If macOS says the disk is still in use, eject it again.
 - **Forget Imported Files** offers every file on every card again. **Forget Camera Names**
   resets the folder names you've given cameras.
 
-The app's memory lives in `~/Library/Application Support/SD Backup` (projects and import records),
-and its log in `~/Library/Logs/SD Backup/backups.log`.
+Each projects folder contains a hidden `.sdbackup` folder that identifies it and lists its
+projects, without any absolute paths. That's how moved projects are found again when the SSD
+mounts under a different name, and how a future Windows version can open the same folders. Don't
+delete it.
+
+The rest of the app's memory is local to this Mac: `~/Library/Application Support/SD Backup` holds
+where each projects folder was last seen, a copy of the project list and the import records. The
+log is at `~/Library/Logs/SD Backup/backups.log`.
 
 ## Development
 
@@ -183,12 +189,16 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackupCore/ProjectLayout.swift` | Folder naming, the copy plan, and the per-card import record. |
 | `Sources/SDBackupCore/BackupEngine.swift` | Verified, non-destructive, crash-safe copying. |
 | `Sources/SDBackupCore/YearMigrator.swift` | Moves a year folder to another drive, deleting each original after verification. |
+| `Sources/SDBackupCore/ProjectLibrary.swift` | The portable `.sdbackup/library.json` file, and finding projects folders again on any drive. |
 | `Sources/SDBackup/AppModel.swift` | The read → choose project → import flow. |
 | `Sources/SDBackup/ImportDraft.swift` | Your per-date project choices and camera names. |
 | `Sources/SDBackup/LibraryStore.swift` | Saved projects, camera names and import records. |
 | `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card. |
 | `Sources/SDBackup/Views/` | Control Center–style panel and the Settings window (SwiftUI). |
 | `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`. |
+
+**Windows:** [PORTING.md](PORTING.md) is the specification for a Windows version: the rules, the
+data formats, the Windows equivalents of each macOS API, and the tests to port.
 
 The core module (`SDBackupCore`) has no UI and is covered by `Tests/SDBackupCoreTests`, including
 an end-to-end import of a mixed Canon/Sony/recorder card into the project structure.

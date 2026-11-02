@@ -216,6 +216,18 @@ final class BackupEngineTests: XCTestCase {
         XCTAssertEqual(BackupEngine.sanitizedFolderName(".hidden"), "hidden")
     }
 
+    func testFolderNamesAreSafeOnEveryFileSystem() {
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("What? Yes*", fallback: "x"), "What- Yes-")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("A\\B \"C\" <D> |E|", fallback: "x"), "A-B -C- -D- -E-")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("tab\tname", fallback: "x"), "tab-name")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("Trailing dots. . ", fallback: "x"), "Trailing dots")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("CON", fallback: "x"), "_CON")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("nul.txt", fallback: "x"), "_nul.txt")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("Console", fallback: "x"), "Console")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName("Ana & Jan Wedding", fallback: "x"), "Ana & Jan Wedding")
+        XCTAssertEqual(BackupEngine.sanitizedFolderName(" ?? ", fallback: "x"), "--")
+    }
+
     func testNumberedVariants() {
         let url = URL(fileURLWithPath: "/b/DCIM/IMG_0001.JPG")
         XCTAssertEqual(BackupEngine.numberedVariant(of: url, number: 2).lastPathComponent, "IMG_0001 (2).JPG")
