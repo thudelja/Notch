@@ -281,6 +281,14 @@ final class AppModel: ObservableObject {
         return entries
     }
 
+    /// The most recent complete backup of this card, matched by its backup folder.
+    func lastBackup(of volume: VolumeInfo) -> HistoryEntry? {
+        let folderName = BackupEngine.sanitizedFolderName(volume.backupFolderName)
+        return history.first { entry in
+            entry.outcome == .completed && URL(fileURLWithPath: entry.folderPath).lastPathComponent == folderName
+        }
+    }
+
     func clearHistory() {
         history = []
         UserDefaults.standard.removeObject(forKey: Self.historyKey)

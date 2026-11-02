@@ -78,15 +78,19 @@ inserted.
 
 ## Using it
 
-Click the menu bar icon to see:
+The SD card icon sits on the right side of the menu bar, next to Wi-Fi, battery and Control
+Center. Clicking it opens a panel styled like Control Center:
 
-- Progress of the current backup, with a time estimate and a **Cancel** button
-- Connected cards, each with **Back Up** and **Eject** buttons
-- Recent backups (click one to show it in Finder)
-- The backup folder, **Settings…** and **Quit**
+- **Toggles**: Auto Backup, Verify and Auto Eject. Each round button fills with your accent
+  color when it's on.
+- **Backups** opens the backup folder. **Settings** opens all options.
+- **Status** shows "Ready", or the current backup with a slider-style progress bar, sizes, file
+  count, time left and a cancel button.
+- **Cards** lists connected cards with when each was last backed up, plus **Back Up** and
+  **Eject** buttons.
+- **Recent** shows the last few backups. Click one to show it in Finder.
 
-The **Auto** switch pauses automatic backups. While it is off, you can still back up a card
-manually with **Back Up**.
+When **Auto Backup** is off, cards are copied only when you click **Back Up**.
 
 Ejecting a card in Finder during a backup stops the backup so the card can be ejected. If macOS
 says the disk is still in use, eject it again.
@@ -106,7 +110,7 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackupCore/BackupEngine.swift` | Scanning, de-duplication, verified copying. UI-independent and unit tested. |
 | `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card (DiskArbitration). |
 | `Sources/SDBackup/AppModel.swift` | Watches mounts and unmounts, queues and runs backups, keeps history. |
-| `Sources/SDBackup/Views/` | Menu bar panel and Settings window (SwiftUI). |
+| `Sources/SDBackup/Views/` | Control Center–style menu bar panel and the Settings window (SwiftUI). |
 | `Resources/Info.plist` | Bundle settings: menu-bar-only (`LSUIElement`), permission text. |
 | `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`. |
 
