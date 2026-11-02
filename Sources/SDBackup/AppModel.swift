@@ -357,10 +357,11 @@ final class AppModel: ObservableObject {
                     job.plan.items,
                     from: job.volume.url,
                     to: destination,
-                    createFolders: job.plan.foldersToCreate
-                ) { progress in
-                    Task { @MainActor in self.update(progress, backupID: backupID) }
-                }
+                    createFolders: job.plan.foldersToCreate,
+                    progress: { progress in
+                        Task { @MainActor in self.update(progress, backupID: backupID) }
+                    }
+                )
                 outcome = .success(result)
             } catch {
                 outcome = .failure(error)
