@@ -1,12 +1,17 @@
 name: Build
 
 # Every push: test and build the Windows installer (and, on main, the Mac disk image).
-# A version tag (git tag v1.2.0 && git push origin v1.2.0) also publishes both on a GitHub release.
+# A version tag also publishes both on a GitHub release: either push one (git tag v1.2.0, then
+# git push origin v1.2.0), or create a release with a new v1.2.0 tag on GitHub's Releases page.
 
 on:
   push:
   pull_request:
   workflow_dispatch:
+  # A release published on the website (its tag push may start a run too; the concurrency group below
+  # keeps only the newest of the two).
+  release:
+    types: [published]
 
 concurrency:
   group: build-${{ github.ref }}
@@ -127,9 +132,17 @@ jobs:
           Windows says *"Windows protected your PC"*, click **More info**, then **Run anyway**. It installs for
           your user only, no administrator rights needed, and can be removed in Settings › Apps.
           EOF
-          gh release create "${GITHUB_REF_NAME}" \
-            artifacts/Notch-Mac/Notch.dmg \
-            artifacts/Notch-Windows/Notch-Setup.exe \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "Notch ${GITHUB_REF_NAME#v}" \
-            --notes-file notes.md
+          FILES=(artifacts/Notch-Mac/Notch.dmg artifacts/Notch-Windows/Notch-Setup.exe)
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            # The release was created on the website (which also creates the tag): add the files to it,
+            # and the install notes if its description was left empty.
+            gh release upload "${GITHUB_REF_NAME}" "${FILES[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
+            if [ -z "$(gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --json body --jq .body)" ]; then
+              gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --notes-file notes.md
+            fi
+          else
+            gh release create "${GITHUB_REF_NAME}" "${FILES[@]}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Notch ${GITHUB_REF_NAME#v}" \
+              --notes-file notes.md
+          fi
