@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The SD Backup tray app for Windows 10 and 11. Build and install with windows/build.ps1. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>SDBackup</AssemblyName>
+    <RootNamespace>SDBackup.App</RootNamespace>
+    <ApplicationIcon>Assets\SDBackup.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyTitle>SD Backup</AssemblyTitle>
+    <!-- Single-file publishing (build.ps1). -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\SDBackup.ico" />
+    <Resource Include="Assets\SDBackupAttention.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SDBackup.Core\SDBackup.Core.csproj" />
+    <ProjectReference Include="..\SDBackup.Windows\SDBackup.Windows.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The import, copy and project logic. No Windows dependencies, so it builds and its tests run on
+    any OS. It mirrors Sources/SDBackupCore in the Mac version; PORTING.md is the shared spec.
+  -->
+  <PropertyGroup>
+    <!-- .NET 10 (LTS) with a .NET 10 SDK; .NET 8 lets it build with older SDKs. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">net10.0</TargetFramework>
+    <RootNamespace>SDBackup.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SDBackup.Core.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{E3725820-78E9-4351-9DC4-7B6DC9394E54}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDBackup.Core", "src\SDBackup.Core\SDBackup.Core.csproj", "{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B955C863-0EF1-4F53-95A1-F67FBA71C449}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDBackup.Core.Tests", "tests\SDBackup.Core.Tests\SDBackup.Core.Tests.csproj", "{48EE13F3-66EE-424A-A8C4-61F4560D1E29}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDBackup.Windows", "src\SDBackup.Windows\SDBackup.Windows.csproj", "{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SDBackup.App", "src\SDBackup.App\SDBackup.App.csproj", "{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{48EE13F3-66EE-424A-A8C4-61F4560D1E29}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{48EE13F3-66EE-424A-A8C4-61F4560D1E29}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{48EE13F3-66EE-424A-A8C4-61F4560D1E29}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{48EE13F3-66EE-424A-A8C4-61F4560D1E29}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4AC6D3A5-4B0F-4981-BFC9-265C61940FE9} = {E3725820-78E9-4351-9DC4-7B6DC9394E54}
+		{48EE13F3-66EE-424A-A8C4-61F4560D1E29} = {B955C863-0EF1-4F53-95A1-F67FBA71C449}
+		{7D2B9E14-3A51-4C8E-9F02-6B1E5A3C7D91} = {E3725820-78E9-4351-9DC4-7B6DC9394E54}
+		{C1F4A8E2-5B37-4D6A-8E90-2A7F3B6C4E18} = {E3725820-78E9-4351-9DC4-7B6DC9394E54}
+	EndGlobalSection
+EndGlobal

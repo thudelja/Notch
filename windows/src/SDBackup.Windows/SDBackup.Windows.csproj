@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Windows services and view models for the tray app: drive watching, card detection, ejecting,
+    settings, saved projects, and the import flow. No XAML, so it can also be compile-checked with
+    SDKs that lack the Windows Desktop targets:
+      dotnet build -p:ImportWindowsDesktopTargets=false
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>SDBackup.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ImportWindowsDesktopTargets)' == 'false'">
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ImportWindowsDesktopTargets)' == 'false'">
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SDBackup.Core\SDBackup.Core.csproj" />
+  </ItemGroup>
+
+</Project>
