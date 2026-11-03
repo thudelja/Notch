@@ -300,7 +300,7 @@ public sealed class DayRowViewModel : ObservableObject
         get => _owner.ChoiceFor(Day);
         set
         {
-            // The picker briefly reports null while its options are being replaced.
+            // The picker reports null when its selected option is removed during a refresh.
             if (value is null || _refreshing) return;
             _owner.SetChoice(Day, value);
         }
