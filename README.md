@@ -10,7 +10,17 @@ photos and videos into the right year, month, project and camera folders and ver
 
 **Also on Windows:** a Windows 10/11 version with the same features lives in [`windows/`](windows/).
 It shares the folder layout and the project files, so a projects folder on an exFAT SSD works on
-both. See [windows/README.md](windows/README.md) to install it.
+both.
+
+## Download
+
+| | |
+| --- | --- |
+| **Mac** (macOS 13 or later, Apple silicon or Intel) | [Notch.dmg](https://github.com/thudelja/sd-backup/releases/latest/download/Notch.dmg) |
+| **Windows** (Windows 10 1809 or later, or 11) | [Notch-Setup.exe](https://github.com/thudelja/sd-backup/releases/latest/download/Notch-Setup.exe) |
+
+All versions are on the [Releases](https://github.com/thudelja/sd-backup/releases) page. How to
+install: [Mac](#install-on-a-mac) · [Windows](windows/README.md#install).
 
 ## The folder structure
 
@@ -109,23 +119,38 @@ Mac:  ~/Pictures/Projects/2026/…   →   SSD:  /Volumes/SSD/Projects/2026/…
 
 Imports wait while a year is being moved. Progress appears in the menu bar panel.
 
-## Requirements
+## Install on a Mac
 
-- macOS 13 Ventura or later (Apple silicon or Intel)
-- Xcode, or just the Command Line Tools: `xcode-select --install`
+Requires macOS 13 Ventura or later, on Apple silicon or Intel.
 
-## Build and install
+### Option A: download it
+
+1. Download [Notch.dmg](https://github.com/thudelja/sd-backup/releases/latest/download/Notch.dmg)
+   and open it.
+2. Drag **Notch** onto the **Applications** folder in the window that opens.
+3. Open Notch from Applications. macOS blocks it the first time, because the app isn't notarised
+   by Apple (that needs a paid Apple developer account). Click **Done**, open
+   **System Settings › Privacy & Security**, scroll down to *"Notch was blocked…"* and click
+   **Open Anyway**. This is needed only once.
+
+The Notch icon (an SD card with a check) appears in the menu bar. To update, download the new
+version and replace the app in Applications; your settings and projects stay.
+
+### Option B: build it yourself
+
+Requires Xcode, or just the Command Line Tools: `xcode-select --install`.
 
 ```bash
 ./scripts/build-app.sh --install
 ```
 
-This compiles the app, puts `Notch.app` in `/Applications`, and launches it. The Notch icon
-(an SD card with a check) appears in the menu bar. To build without installing, omit `--install`; the app is
-written to `build/Notch.app`.
+This compiles the app, puts `Notch.app` in `/Applications`, and launches it. To build without
+installing, omit `--install`; the app is written to `build/Notch.app`. Apps you build yourself
+aren't blocked by macOS.
 
 The app was called SD Backup before. If `SD Backup.app` is installed, `--install` replaces it, and
-your settings, projects and import records carry over.
+your settings, projects and import records carry over. (With Option A, delete `SD Backup.app` from
+Applications yourself.)
 
 ### First launch
 
@@ -139,8 +164,8 @@ macOS will ask for two permissions. Allow both:
 When the app runs from `/Applications`, it registers itself to open at login the first time it
 starts. You can change this in Settings.
 
-> The build is signed ad hoc for your Mac only. macOS ties privacy permissions to the signature,
-> so after rebuilding you may be asked for card access again.
+> Notch is signed ad hoc rather than with an Apple Developer ID. macOS ties privacy permissions to
+> the signature, so after an update you may be asked for card access again.
 
 ## The menu bar panel
 
@@ -206,11 +231,27 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card. |
 | `Sources/SDBackup/Views/` | Control Center–style panel and the Settings window (SwiftUI). |
 | `Sources/SDBackup/MenuBarIcon.swift` | The menu bar icon, drawn in code. |
-| `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`. |
+| `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`; `--universal --dmg` makes the download. |
 | `branding/make_icons.py` | Draws the logo and writes the Mac and Windows icon files (`python3 branding/make_icons.py`). |
 
 **Windows:** the Windows version is in [`windows/`](windows/). [PORTING.md](PORTING.md) is its
 specification: the rules, the data formats, the Windows equivalents of each macOS API, and the tests.
+
+### Releasing a version
+
+Tag the commit and push the tag:
+
+```bash
+git tag v1.0.0
+```
+
+```bash
+git push origin v1.0.0
+```
+
+CI then builds `Notch.dmg` (Apple silicon and Intel) and `Notch-Setup.exe` (x64 and ARM64), with
+the tag as the version number, and publishes them on a GitHub release. The download links above
+always point to the latest release.
 
 The core module (`SDBackupCore`) has no UI and is covered by `Tests/SDBackupCoreTests`, including
 an end-to-end import of a mixed Canon/Sony/recorder card into the project structure.

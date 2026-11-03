@@ -25,16 +25,18 @@ folder on an exFAT SSD works on both.
 
 ## Install
 
-### Option A: download the ready-made app
+### Option A: download the installer
 
-1. Open the repository on GitHub, go to **Actions**, open the latest successful **Build** run, and
-   download **Notch-Windows** at the bottom of the page.
-2. Unzip it. Use `win-x64\Notch.exe` for most PCs, or `win-arm64\Notch.exe` for ARM PCs.
-3. Move `Notch.exe` to a permanent place, for example
-   `C:\Users\<you>\AppData\Local\Programs\Notch\`, and double-click it.
+1. Download [Notch-Setup.exe](https://github.com/thudelja/sd-backup/releases/latest/download/Notch-Setup.exe)
+   (all versions are on the [Releases](https://github.com/thudelja/sd-backup/releases) page).
+2. Run it. The app isn't code-signed (that needs a paid certificate), so Windows may say
+   *"Windows protected your PC"*: click **More info**, then **Run anyway**.
+3. Click **Install**, then **Finish**. Notch starts.
 
-The app isn't code-signed, so Windows SmartScreen may say *"Windows protected your PC"*. Click
-**More info**, then **Run anyway**. This happens only the first time.
+It installs for your user only, without administrator rights, into
+`%LOCALAPPDATA%\Programs\Notch`, with a Start menu entry. The same installer works on normal (x64)
+and ARM (Snapdragon) PCs. To update, run the installer of the new version; your settings and
+projects stay.
 
 ### Option B: build it yourself
 
@@ -94,12 +96,15 @@ your recent list. This works even if the drive gets a different letter than last
 
 ### Uninstall
 
+Open **Settings › Apps › Installed apps**, find **Notch** and choose **Uninstall**. If you installed
+it with `build.ps1` instead, run:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -Uninstall
 ```
 
-This removes the app, its shortcut and its **Start with Windows** entry. Your projects are never
-touched. Settings and import records stay in `%APPDATA%\Notch`; delete that folder to remove
+Either way, the app, its shortcut and its **Start with Windows** entry are removed. Your projects
+are never touched. Settings and import records stay in `%APPDATA%\Notch`; delete that folder to remove
 them too.
 
 ## Differences from the Mac version
@@ -121,6 +126,7 @@ windows/
 ├── src/SDBackup.Windows   Drive watching, card detection, eject, settings, view models (no XAML).
 ├── src/SDBackup.App       The WPF app: tray icon, panel, settings window, theme, self-test.
 ├── tests/                 xUnit tests for the core (62).
+├── installer/Notch.iss    The installer (Inno Setup); CI builds dist\Notch-Setup.exe from it.
 └── build.ps1              Test, build, install, uninstall.
 ```
 

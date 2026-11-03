@@ -1,5 +1,8 @@
 name: Build
 
+# Every push: test and build the Windows installer (and, on main, the Mac disk image).
+# A version tag (git tag v1.2.0 && git push origin v1.2.0) also publishes both on a GitHub release.
+
 on:
   push:
   pull_request:
@@ -17,6 +20,7 @@ jobs:
     defaults:
       run:
         working-directory: windows
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
 
@@ -24,14 +28,19 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Version (from the tag, or 0.0.0-dev)
+        run: |
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0-dev' }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "FILE_VERSION=$($version.Split('-')[0])" >> $env:GITHUB_ENV
+
       - name: Test the core
         run: dotnet test tests/SDBackup.Core.Tests -c Release --nologo
 
       - name: Build (x64)
-        run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/win-x64 --nologo
+        run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=$env:VERSION -o dist/win-x64 --nologo
 
       - name: Self-test (opens every window with sample data; fails on XAML or binding errors)
-        shell: pwsh
         timeout-minutes: 5
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'self-test'
@@ -48,27 +57,79 @@ jobs:
           if-no-files-found: ignore
 
       - name: Build (ARM64)
-        run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -o dist/win-arm64 --nologo
+        run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=$env:VERSION -o dist/win-arm64 --nologo
+
+      - name: Build the installer (Notch-Setup.exe)
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup --yes --no-progress | Out-Null }
+          & $iscc /Qp "/DVersion=$env:VERSION" "/DFileVersion=$env:FILE_VERSION" installer\Notch.iss
+          if ($LASTEXITCODE -ne 0) { throw "The installer didn't build (exit code $LASTEXITCODE)." }
+          Get-Item dist/Notch-Setup.exe | Select-Object Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
 
       - name: Upload the app
         uses: actions/upload-artifact@v4
         with:
           name: Notch-Windows
           path: |
+            windows/dist/Notch-Setup.exe
             windows/dist/win-x64/Notch.exe
             windows/dist/win-arm64/Notch.exe
 
   macos:
     name: Mac app
-    # macOS minutes count ten times towards the free allowance, so this runs on main and on demand only.
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    # macOS minutes count ten times towards the free allowance of a private repository, so this runs on
+    # main, on version tags and on demand only.
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build
-        run: swift build -c release
-
       - name: Test
         run: swift test
+
+      - name: Build Notch.dmg (Apple silicon and Intel)
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0-dev"; fi
+          bash scripts/build-app.sh --universal --dmg --version "${VERSION}"
+
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Notch-Mac
+          path: build/Notch.dmg
+
+  release:
+    name: Publish the release
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Install
+
+          **Mac** (macOS 13 or later, Apple silicon or Intel): download **Notch.dmg**, open it and drag Notch
+          into Applications. The first time you open it, macOS blocks it because the app isn't notarised by
+          Apple: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
+
+          **Windows** (Windows 10 1809 or later, or Windows 11): download **Notch-Setup.exe** and run it. If
+          Windows says *"Windows protected your PC"*, click **More info**, then **Run anyway**. It installs for
+          your user only, no administrator rights needed, and can be removed in Settings › Apps.
+          EOF
+          gh release create "${GITHUB_REF_NAME}" \
+            artifacts/Notch-Mac/Notch.dmg \
+            artifacts/Notch-Windows/Notch-Setup.exe \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Notch ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md
