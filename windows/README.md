@@ -27,8 +27,8 @@ folder on an exFAT SSD works on both.
 
 ### Option A: download the installer
 
-1. Download [Notch-Setup.exe](https://github.com/thudelja/sd-backup/releases/latest/download/Notch-Setup.exe)
-   (all versions are on the [Releases](https://github.com/thudelja/sd-backup/releases) page).
+1. Download [Notch-Setup.exe](https://github.com/thudelja/Notch/releases/latest/download/Notch-Setup.exe)
+   (all versions are on the [Releases](https://github.com/thudelja/Notch/releases) page).
 2. Run it. The app isn't code-signed (that needs a paid certificate), so Windows may say
    *"Windows protected your PC"*: click **More info**, then **Run anyway**.
 3. Click **Install**, then **Finish**. Notch starts.

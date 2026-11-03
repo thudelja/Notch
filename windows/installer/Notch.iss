@@ -24,8 +24,8 @@ AppName=Notch
 AppVersion={#Version}
 AppVerName=Notch {#Version}
 AppPublisher=thudelja
-AppPublisherURL=https://github.com/thudelja/sd-backup
-AppSupportURL=https://github.com/thudelja/sd-backup/issues
+AppPublisherURL=https://github.com/thudelja/Notch
+AppSupportURL=https://github.com/thudelja/Notch/issues
 VersionInfoVersion={#FileVersion}
 PrivilegesRequired=lowest
 ; {autopf} is %LOCALAPPDATA%\Programs for a per-user install. The app starts itself with Windows when it runs

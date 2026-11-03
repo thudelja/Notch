@@ -16,10 +16,10 @@ both.
 
 | | |
 | --- | --- |
-| **Mac** (macOS 13 or later, Apple silicon or Intel) | [Notch.dmg](https://github.com/thudelja/sd-backup/releases/latest/download/Notch.dmg) |
-| **Windows** (Windows 10 1809 or later, or 11) | [Notch-Setup.exe](https://github.com/thudelja/sd-backup/releases/latest/download/Notch-Setup.exe) |
+| **Mac** (macOS 13 or later, Apple silicon or Intel) | [Notch.dmg](https://github.com/thudelja/Notch/releases/latest/download/Notch.dmg) |
+| **Windows** (Windows 10 1809 or later, or 11) | [Notch-Setup.exe](https://github.com/thudelja/Notch/releases/latest/download/Notch-Setup.exe) |
 
-All versions are on the [Releases](https://github.com/thudelja/sd-backup/releases) page. How to
+All versions are on the [Releases](https://github.com/thudelja/Notch/releases) page. How to
 install: [Mac](#install-on-a-mac) · [Windows](windows/README.md#install).
 
 ## The folder structure
@@ -125,7 +125,7 @@ Requires macOS 13 Ventura or later, on Apple silicon or Intel.
 
 ### Option A: download it
 
-1. Download [Notch.dmg](https://github.com/thudelja/sd-backup/releases/latest/download/Notch.dmg)
+1. Download [Notch.dmg](https://github.com/thudelja/Notch/releases/latest/download/Notch.dmg)
    and open it.
 2. Drag **Notch** onto the **Applications** folder in the window that opens.
 3. Open Notch from Applications. macOS blocks it the first time, because the app isn't notarised
