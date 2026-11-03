@@ -47,17 +47,6 @@ jobs:
           path: ${{ runner.temp }}/self-test
           if-no-files-found: ignore
 
-      - name: Print screenshots (temporary, for review)
-        if: always()
-        shell: pwsh
-        run: |
-          Get-ChildItem (Join-Path $env:RUNNER_TEMP 'self-test') -Filter *.png | ForEach-Object {
-            "=== BEGIN $($_.Name)"
-            $text = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
-            for ($i = 0; $i -lt $text.Length; $i += 4000) { "B64 " + $text.Substring($i, [Math]::Min(4000, $text.Length - $i)) }
-            "=== END $($_.Name)"
-          }
-
       - name: Build (ARM64)
         run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -o dist/win-arm64 --nologo
 
