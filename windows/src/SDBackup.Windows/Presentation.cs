@@ -26,7 +26,8 @@ public static class ThemeManager
 
         Set(resources, "AccentBrush", accent);
         Set(resources, "AccentHoverBrush", accentHover);
-        Set(resources, "AccentForegroundBrush", luminance > 0.6 ? Colors.Black : Colors.White);
+        // Dark text on light accents, as Windows 11 does in dark mode.
+        Set(resources, "AccentForegroundBrush", luminance > 0.5 ? Colors.Black : Colors.White);
 
         if (IsDark)
         {

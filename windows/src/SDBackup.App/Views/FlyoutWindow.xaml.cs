@@ -37,6 +37,7 @@ public partial class FlyoutWindow : Window
 
     public void ShowNearTray()
     {
+        MaxHeight = SystemParameters.WorkArea.Height;
         if (!IsVisible) Show();
         UpdateLayout();
         Reposition();
@@ -50,10 +51,14 @@ public partial class FlyoutWindow : Window
         Hide();
     }
 
-    /// <summary>Bottom-right corner of the work area, i.e. just above the taskbar's notification area.</summary>
+    /// <summary>
+    /// Bottom-right corner of the work area, i.e. just above the taskbar's notification area. The panel is never
+    /// taller than the work area; its content scrolls instead.
+    /// </summary>
     private void Reposition()
     {
         var area = SystemParameters.WorkArea;
+        if (MaxHeight != area.Height) MaxHeight = area.Height;
         Left = area.Right - ActualWidth;
         Top = Math.Max(area.Top, area.Bottom - ActualHeight);
     }

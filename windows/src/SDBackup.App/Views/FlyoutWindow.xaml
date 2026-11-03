@@ -28,6 +28,17 @@
 
         <Border x:Name="Root" CornerRadius="8" Padding="12" BorderThickness="1"
                 Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource SurfaceStrokeBrush}">
+            <DockPanel>
+
+                <!-- ============================================================ Footer -->
+                <DockPanel DockPanel.Dock="Bottom" Margin="4,2,4,0">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Quit SD Backup"
+                            Command="{Binding QuitCommand}" />
+                    <TextBlock Style="{StaticResource SmallText}" Text="SD Backup" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <!-- The window is capped at the screen's height (see FlyoutWindow.Reposition); the rest scrolls. -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
             <StackPanel>
 
                 <!-- ============================================================ Quick settings -->
@@ -76,11 +87,10 @@
                                        Text="{Binding DataContext.MoreWaitingText, RelativeSource={RelativeSource AncestorType=Window}}" />
                             <StackPanel>
                                 <TextBlock Style="{StaticResource TitleText}" Text="{Binding Title}" />
-                                <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Summary}" />
+                                <TextBlock Style="{StaticResource WrappedCaptionText}" Text="{Binding Summary}" />
                             </StackPanel>
                         </DockPanel>
 
-                        <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding Days}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -112,7 +122,6 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </ScrollViewer>
 
                         <StackPanel Visibility="{Binding HasCameras, Converter={StaticResource BoolToVisible}}" Margin="0,0,0,8">
                             <TextBlock Style="{StaticResource CaptionText}" FontWeight="SemiBold" Text="Camera folders" Margin="0,0,0,6" />
@@ -299,14 +308,9 @@
                         </ItemsControl>
                     </StackPanel>
                 </Border>
-
-                <!-- ============================================================ Footer -->
-                <DockPanel Margin="4,2,4,0">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Quit SD Backup"
-                            Command="{Binding QuitCommand}" />
-                    <TextBlock Style="{StaticResource SmallText}" Text="SD Backup" VerticalAlignment="Center" />
-                </DockPanel>
             </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
         </Border>
     </Grid>
 </Window>

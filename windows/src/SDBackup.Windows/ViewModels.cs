@@ -31,7 +31,19 @@ public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid?
     public static DayChoice Existing(Guid projectId) => new(DayChoiceKind.Existing, ProjectId: projectId);
 }
 
-public sealed record ChoiceOption(DayChoice Choice, string Title);
+/// <summary>An entry in a day's project picker. Kept (and its title updated) across refreshes so the picker keeps its selection.</summary>
+public sealed class ChoiceOption(DayChoice choice, string title) : ObservableObject
+{
+    private string _title = title;
+
+    public DayChoice Choice { get; } = choice;
+
+    public string Title
+    {
+        get => _title;
+        set => SetProperty(ref _title, value);
+    }
+}
 
 /// <summary>A card that has been read and is waiting for the user to pick a project for each shoot day.</summary>
 public sealed class ImportDraftViewModel : ObservableObject
@@ -133,26 +145,26 @@ public sealed class ImportDraftViewModel : ObservableObject
         ImportCommand.RaiseCanExecuteChanged();
     }
 
-    private List<ChoiceOption> OptionsFor(ShootDay day)
+    private List<(DayChoice Choice, string Title)> OptionsFor(ShootDay day)
     {
-        var options = new List<ChoiceOption>
+        var options = new List<(DayChoice Choice, string Title)>
         {
-            new(DayChoice.Unassigned, "Choose a project…"),
-            new(DayChoice.NewProject, "New project"),
+            (DayChoice.Unassigned, "Choose a project…"),
+            (DayChoice.NewProject, "New project"),
         };
         foreach (var row in Days)
         {
             if (row.Day != day && ChoiceFor(row.Day) == DayChoice.NewProject)
             {
-                options.Add(new(DayChoice.SameAs(row.Day), $"Same as {NewProjectTitle(row.Day)}"));
+                options.Add((DayChoice.SameAs(row.Day), $"Same as {NewProjectTitle(row.Day)}"));
             }
         }
         foreach (var project in RecentProjects)
         {
             var missing = IsOnConnectedDrive(project) ? "" : " (drive not connected)";
-            options.Add(new(DayChoice.Existing(project.Id), $"{project.Name} · {project.StartDay.FolderDate}{missing}"));
+            options.Add((DayChoice.Existing(project.Id), $"{project.Name} · {project.StartDay.FolderDate}{missing}"));
         }
-        options.Add(new(DayChoice.Skip, "Skip for now"));
+        options.Add((DayChoice.Skip, "Skip for now"));
         return options;
     }
 
@@ -305,15 +317,31 @@ public sealed class DayRowViewModel : ObservableObject
         }
     }
 
-    internal void Refresh(IReadOnlyList<ChoiceOption> options)
+    /// <summary>
+    /// Updates the picker's options in place: entries that stay keep their identity (only titles change), so
+    /// the picker keeps showing the selected one. Replacing the list would make it lose the selection.
+    /// </summary>
+    internal void Refresh(IReadOnlyList<(DayChoice Choice, string Title)> wanted)
     {
-        if (!Options.SequenceEqual(options))
+        _refreshing = true;
+        for (var i = Options.Count - 1; i >= 0; i--)
         {
-            _refreshing = true;
-            Options.Clear();
-            foreach (var option in options) Options.Add(option);
-            _refreshing = false;
+            if (!wanted.Any(w => w.Choice == Options[i].Choice)) Options.RemoveAt(i);
         }
+        for (var i = 0; i < wanted.Count; i++)
+        {
+            var (choice, title) = wanted[i];
+            var existing = Options.FirstOrDefault(o => o.Choice == choice);
+            if (existing is null)
+            {
+                Options.Insert(i, new ChoiceOption(choice, title));
+                continue;
+            }
+            existing.Title = title;
+            var index = Options.IndexOf(existing);
+            if (index != i) Options.Move(index, i);
+        }
+        _refreshing = false;
         OnPropertyChanged(nameof(Choice));
         OnPropertyChanged(nameof(IsNewProject));
     }

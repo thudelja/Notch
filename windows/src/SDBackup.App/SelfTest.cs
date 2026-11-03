@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -55,6 +56,24 @@ internal static class SelfTest
                 Save(flyout, Path.Combine(folder, $"panel-{theme}.png"));
                 report.Add($"Panel ({theme}): {flyout.ActualWidth:0}×{flyout.ActualHeight:0}, import ready: {draft.IsReady}");
 
+                // Regressions seen before: a picker going blank after its options were refreshed, and the panel
+                // running off the bottom of a small screen.
+                var blank = Descendants<ComboBox>(flyout).Count(box => box.SelectedItem is null);
+                if (blank > 0) throw new InvalidOperationException($"{blank} project picker(s) show no selection.");
+                var workArea = SystemParameters.WorkArea;
+                if (flyout.ActualHeight > workArea.Height + 1 || flyout.Top < workArea.Top - 1)
+                {
+                    throw new InvalidOperationException($"The panel ({flyout.ActualHeight:0} high at {flyout.Top:0}) doesn't fit the work area ({workArea}).");
+                }
+                var scroller = Descendants<ScrollViewer>(flyout).FirstOrDefault();
+                if (scroller is { ScrollableHeight: > 0 })
+                {
+                    scroller.ScrollToEnd();
+                    Settle();
+                    Save(flyout, Path.Combine(folder, $"panel-{theme}-scrolled.png"));
+                    report.Add($"Panel ({theme}): scrolls by {scroller.ScrollableHeight:0} in a {workArea.Height:0}-high work area");
+                }
+
                 var settings = new SettingsWindow { DataContext = model };
                 settings.Show();
                 Settle();
@@ -82,6 +101,16 @@ internal static class SelfTest
         report.Insert(0, failed ? "SELF-TEST FAILED" : "SELF-TEST PASSED");
         File.WriteAllLines(Path.Combine(folder, "self-test.txt"), report);
         return failed ? 1 : 0;
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T match) yield return match;
+            foreach (var descendant in Descendants<T>(child)) yield return descendant;
+        }
     }
 
     /// <summary>Lets WPF finish pending layout, binding and rendering work.</summary>
