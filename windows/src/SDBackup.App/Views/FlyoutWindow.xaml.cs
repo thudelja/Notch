@@ -12,13 +12,19 @@ public partial class FlyoutWindow : Window
     public FlyoutWindow()
     {
         InitializeComponent();
-        Deactivated += (_, _) => HideFlyout();
+        Deactivated += (_, _) =>
+        {
+            if (HideWhenDeactivated) HideFlyout();
+        };
         SizeChanged += (_, _) => Reposition();
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) HideFlyout();
         };
     }
+
+    /// <summary>Hide when another window is clicked (off for the self-test, where nothing keeps focus).</summary>
+    public bool HideWhenDeactivated { get; set; } = true;
 
     /// <summary>Clicking the tray icon while the panel is open first deactivates (hides) it; don't reopen it straight away.</summary>
     private bool JustHidden => DateTime.UtcNow - _hiddenAt < TimeSpan.FromMilliseconds(400);

@@ -43,7 +43,7 @@ internal static class SelfTest
                 var model = new AppModel(new AppSettings(null), new LibraryStore(null), new BackupLog(null), new SilentDialogs(), (_, _) => { }, null);
                 model.LoadSampleState();
 
-                var flyout = new FlyoutWindow { DataContext = model };
+                var flyout = new FlyoutWindow { DataContext = model, HideWhenDeactivated = false };
                 flyout.ShowNearTray();
                 Settle();
                 // Exercise the import panel: pick another option, rename the project, edit a camera name.
