@@ -7,6 +7,11 @@ share projects folders (for example on an external SSD) with the Mac version.
 The Mac source is the reference implementation. Where this document and the code disagree, the
 code in `Sources/SDBackupCore` wins; please update this file.
 
+**Status:** the Windows version exists in [`windows/`](windows/) (C#/.NET, WPF). It implements
+this specification. `windows/src/SDBackup.Core` mirrors `Sources/SDBackupCore` file for file, and
+its 62 tests include the ported Mac tests plus tests that read JSON exactly as the Mac writes it.
+Windows-specific behaviour is described in [windows/README.md](windows/README.md#differences-from-the-mac-version).
+
 **Contents**
 
 1. [Architecture](#1-architecture)

@@ -6,6 +6,10 @@ Insert a card. SD Backup reads it, works out the shoot dates and which cameras w
 which project each shoot date belongs to: a new project or one of your last three. It then copies
 photos and videos into the right year, month, project and camera folders and verifies every copy.
 
+**Also on Windows:** a Windows 10/11 version with the same features lives in [`windows/`](windows/).
+It shares the folder layout and the project files, so a projects folder on an exFAT SSD works on
+both. See [windows/README.md](windows/README.md) to install it.
+
 ## The folder structure
 
 Everything goes into one **projects folder** (default `~/Pictures/Projects`, changeable in

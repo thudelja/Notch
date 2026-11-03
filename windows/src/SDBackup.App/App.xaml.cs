@@ -52,10 +52,11 @@ public partial class App : Application
             Shutdown();
             return;
         }
-        _showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
+        var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSignalName);
+        _showSignal = showSignal;
         var listener = new Thread(() =>
         {
-            while (_showSignal.WaitOne())
+            while (showSignal.WaitOne())
             {
                 Dispatcher.InvokeAsync(ShowPanel);
             }
@@ -82,19 +83,22 @@ public partial class App : Application
         var library = new LibraryStore(AppPaths.Data);
         var log = new BackupLog(AppPaths.Logs);
 
-        _tray = new TrayIcon(LoadIcon("SDBackup.ico"), LoadIcon("SDBackupAttention.ico"));
-        _model = new AppModel(settings, library, log, new WindowsDialogs(), (title, body) => _tray.Notify(title, body),
+        var tray = new TrayIcon(LoadIcon("SDBackup.ico"), LoadIcon("SDBackupAttention.ico"));
+        var model = new AppModel(settings, library, log, new WindowsDialogs(), (title, body) => tray.Notify(title, body),
             Path.Combine(AppPaths.Data, "history.json"));
-        _flyout = new FlyoutWindow { DataContext = _model };
+        var flyout = new FlyoutWindow { DataContext = model };
+        _tray = tray;
+        _model = model;
+        _flyout = flyout;
 
-        _tray.Clicked += () => _flyout.Toggle();
-        _tray.SettingsRequested += ShowSettings;
-        _tray.QuitRequested += () => _model.QuitCommand.Execute(null);
-        _model.SettingsRequested += ShowSettings;
-        _model.QuitRequested += Exit;
-        _model.WaitingCountChanged += count => _tray.SetWaitingCount(count);
+        tray.Clicked += flyout.Toggle;
+        tray.SettingsRequested += ShowSettings;
+        tray.QuitRequested += () => model.QuitCommand.Execute(null);
+        model.SettingsRequested += ShowSettings;
+        model.QuitRequested += ExitApp;
+        model.WaitingCountChanged += tray.SetWaitingCount;
 
-        _model.Start();
+        model.Start();
         ConfigureStartupOnFirstRun();
         if (!e.Args.Contains("--background")) ShowPanel();
     }
@@ -104,14 +108,16 @@ public partial class App : Application
     private void ShowSettings()
     {
         _flyout?.HideFlyout();
-        if (_settings is null)
+        var settings = _settings;
+        if (settings is null)
         {
-            _settings = new SettingsWindow { DataContext = _model };
-            _settings.Closed += (_, _) => _settings = null;
-            _settings.Show();
+            settings = new SettingsWindow { DataContext = _model };
+            settings.Closed += (_, _) => _settings = null;
+            _settings = settings;
+            settings.Show();
         }
-        if (_settings.WindowState == WindowState.Minimized) _settings.WindowState = WindowState.Normal;
-        _settings.Activate();
+        if (settings.WindowState == WindowState.Minimized) settings.WindowState = WindowState.Normal;
+        settings.Activate();
     }
 
     /// <summary>
@@ -140,7 +146,7 @@ public partial class App : Application
         return new System.Drawing.Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
     }
 
-    private void Exit()
+    private void ExitApp()
     {
         _model?.Dispose();
         _tray?.Dispose();
