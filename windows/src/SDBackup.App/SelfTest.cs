@@ -13,7 +13,7 @@ using SDBackup.Windows;
 namespace SDBackup.App;
 
 /// <summary>
-/// <c>SDBackup.exe --self-test &lt;folder&gt;</c>: opens the panel and the settings window with sample data in light
+/// <c>Notch.exe --self-test &lt;folder&gt;</c>: opens the panel and the settings window with sample data in light
 /// and dark mode, fails on any XAML error or data-binding error, and writes screenshots and a report to the
 /// folder. CI runs this on Windows to catch problems a compiler can't.
 /// </summary>
@@ -32,8 +32,8 @@ internal static class SelfTest
         try
         {
             System.Windows.Forms.Application.EnableVisualStyles();
-            _ = App.LoadIcon("SDBackup.ico");
-            _ = App.LoadIcon("SDBackupAttention.ico");
+            _ = App.LoadIcon("Tray.ico");
+            _ = App.LoadIcon("TrayAttention.ico");
             report.Add("Icons: loaded");
 
             foreach (var dark in new[] { false, true })
@@ -58,6 +58,10 @@ internal static class SelfTest
 
                 // Regressions seen before: a picker going blank after its options were refreshed, and the panel
                 // running off the bottom of a small screen.
+                if (Descendants<Image>(flyout).Any(image => image.Source is not { Width: > 0 }))
+                {
+                    throw new InvalidOperationException("An image in the panel (the footer logo) didn't load.");
+                }
                 var blank = Descendants<ComboBox>(flyout).Count(box => box.SelectedItem is null);
                 if (blank > 0) throw new InvalidOperationException($"{blank} project picker(s) show no selection.");
                 var workArea = SystemParameters.WorkArea;

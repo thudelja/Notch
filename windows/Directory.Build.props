@@ -6,8 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
-    <Company>SD Backup</Company>
-    <Product>SD Backup</Product>
+    <Company>Notch</Company>
+    <Product>Notch</Product>
     <Version>1.0.0</Version>
   </PropertyGroup>
 </Project>

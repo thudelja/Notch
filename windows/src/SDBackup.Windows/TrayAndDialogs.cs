@@ -23,15 +23,15 @@ public sealed class TrayIcon : IDisposable
         _normal = normal;
         _attention = attention;
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open SD Backup", null, (_, _) => Clicked?.Invoke());
+        menu.Items.Add("Open Notch", null, (_, _) => Clicked?.Invoke());
         menu.Items.Add("Settings…", null, (_, _) => SettingsRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit SD Backup", null, (_, _) => QuitRequested?.Invoke());
+        menu.Items.Add("Quit Notch", null, (_, _) => QuitRequested?.Invoke());
 
         _icon = new NotifyIcon
         {
             Icon = normal,
-            Text = "SD Backup",
+            Text = "Notch",
             ContextMenuStrip = menu,
             Visible = true,
         };
@@ -48,9 +48,9 @@ public sealed class TrayIcon : IDisposable
         _icon.Icon = count > 0 ? _attention : _normal;
         _icon.Text = count switch
         {
-            0 => "SD Backup",
-            1 => "SD Backup – 1 card waiting for a project",
-            _ => $"SD Backup – {count} cards waiting for a project",
+            0 => "Notch",
+            1 => "Notch – 1 card waiting for a project",
+            _ => $"Notch – {count} cards waiting for a project",
         };
     }
 
@@ -73,7 +73,7 @@ public sealed class WindowsDialogs : IDialogs
         var confirm = new TaskDialogButton(confirmText);
         var page = new TaskDialogPage
         {
-            Caption = "SD Backup",
+            Caption = "Notch",
             Heading = title,
             Text = message,
             Icon = TaskDialogIcon.Warning,
@@ -88,7 +88,7 @@ public sealed class WindowsDialogs : IDialogs
     {
         var page = new TaskDialogPage
         {
-            Caption = "SD Backup",
+            Caption = "Notch",
             Heading = title,
             Text = message,
             Icon = TaskDialogIcon.Information,

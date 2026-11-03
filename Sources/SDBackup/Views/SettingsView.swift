@@ -89,7 +89,7 @@ struct SettingsView: View {
                     Button("Forget Imported Files…") { model.forgetImportedFiles() }
                     Button("Forget Camera Names") { model.forgetCameraNames() }
                 }
-                Text("SD Backup remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera.")
+                Text("Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -123,7 +123,7 @@ final class SettingsWindowController {
                 .environmentObject(model)
                 .environmentObject(model.settings)
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "SD Backup Settings"
+            window.title = "Notch Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()

@@ -8,7 +8,8 @@ import SDBackupCore
 /// - `.sdbackup/library.json`: the folder's ID and its projects, without absolute paths. A drive
 ///   mounted under another name, or read by a Windows version, still makes sense.
 ///
-/// Data local to this Mac, in ~/Library/Application Support/SD Backup:
+/// Data local to this Mac, in ~/Library/Application Support/SD Backup (the app's name before it
+/// was called Notch; kept so existing settings, projects and import records carry over):
 /// - `libraries.json`: where each projects folder was last seen.
 /// - `projects.json`: every project, so projects on a disconnected drive still show up.
 /// - `Imports/<card>.json`: which files of each card were imported.

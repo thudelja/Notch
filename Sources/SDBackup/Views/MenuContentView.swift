@@ -131,7 +131,7 @@ struct MenuContentView: View {
         HStack {
             Button("Open Log") { model.openLog() }
             Spacer()
-            Button("Quit SD Backup") { model.quit() }
+            Button("Quit Notch") { model.quit() }
                 .keyboardShortcut("q")
         }
         .buttonStyle(.plain)

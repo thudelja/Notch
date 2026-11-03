@@ -78,7 +78,8 @@ final class AppModel: ObservableObject {
 
     private static let historyKey = "importHistory"
     private static let historyLimit = 25
-    private static let loginItemConfiguredKey = "loginItemConfigured"
+    /// Renamed when the app became Notch (a new app bundle), so the renamed app adds its own login item.
+    private static let loginItemConfiguredKey = "loginItemConfigured.notch"
 
     init() {
         settings = AppSettings()

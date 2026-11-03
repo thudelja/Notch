@@ -1,7 +1,7 @@
 <Window x:Class="SDBackup.App.FlyoutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SD Backup"
+        Title="Notch"
         Width="404"
         SizeToContent="Height"
         WindowStyle="None"
@@ -32,9 +32,13 @@
 
                 <!-- ============================================================ Footer -->
                 <DockPanel DockPanel.Dock="Bottom" Margin="4,2,4,0">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Quit SD Backup"
+                    <Button DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Content="Quit Notch"
                             Command="{Binding QuitCommand}" />
-                    <TextBlock Style="{StaticResource SmallText}" Text="SD Backup" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Image Source="/Assets/Notch.png" Width="16" Height="16" Margin="0,0,6,0"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                        <TextBlock Style="{StaticResource SmallText}" Text="Notch" VerticalAlignment="Center" />
+                    </StackPanel>
                 </DockPanel>
 
                 <!-- The window is capped at the screen's height (see FlyoutWindow.Reposition); the rest scrolls. -->

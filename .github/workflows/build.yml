@@ -35,7 +35,7 @@ jobs:
         timeout-minutes: 5
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'self-test'
-          $process = Start-Process -FilePath dist/win-x64/SDBackup.exe -ArgumentList '--self-test', $out -Wait -PassThru
+          $process = Start-Process -FilePath dist/win-x64/Notch.exe -ArgumentList '--self-test', $out -Wait -PassThru
           Get-Content (Join-Path $out 'self-test.txt') -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw "Self-test failed with exit code $($process.ExitCode)." }
 
@@ -53,10 +53,10 @@ jobs:
       - name: Upload the app
         uses: actions/upload-artifact@v4
         with:
-          name: SD-Backup-Windows
+          name: Notch-Windows
           path: |
-            windows/dist/win-x64/SDBackup.exe
-            windows/dist/win-arm64/SDBackup.exe
+            windows/dist/win-x64/Notch.exe
+            windows/dist/win-arm64/Notch.exe
 
   macos:
     name: Mac app

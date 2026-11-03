@@ -9,7 +9,7 @@ using SDBackup.Windows;
 namespace SDBackup.App;
 
 /// <summary>
-/// Starts SD Backup in the notification area. Command-line options:
+/// Starts Notch in the notification area. Command-line options:
 /// <list type="bullet">
 /// <item><c>--background</c>: start without opening the panel (used when starting with Windows).</item>
 /// <item><c>--self-test &lt;folder&gt;</c>: open every window with sample data, write screenshots and a report, then exit.</item>
@@ -17,8 +17,8 @@ namespace SDBackup.App;
 /// </summary>
 public partial class App : Application
 {
-    private const string InstanceName = @"Local\SDBackup.SingleInstance";
-    private const string ShowSignalName = @"Local\SDBackup.ShowPanel";
+    private const string InstanceName = @"Local\Notch.SingleInstance";
+    private const string ShowSignalName = @"Local\Notch.ShowPanel";
 
     private Mutex? _instance;
     private EventWaitHandle? _showSignal;
@@ -34,7 +34,7 @@ public partial class App : Application
         var selfTest = Array.IndexOf(e.Args, "--self-test");
         if (selfTest >= 0)
         {
-            var folder = selfTest + 1 < e.Args.Length ? e.Args[selfTest + 1] : Path.Combine(Path.GetTempPath(), "SDBackup-self-test");
+            var folder = selfTest + 1 < e.Args.Length ? e.Args[selfTest + 1] : Path.Combine(Path.GetTempPath(), "Notch-self-test");
             Shutdown(SelfTest.Run(this, folder));
             return;
         }
@@ -83,7 +83,7 @@ public partial class App : Application
         var library = new LibraryStore(AppPaths.Data);
         var log = new BackupLog(AppPaths.Logs);
 
-        var tray = new TrayIcon(LoadIcon("SDBackup.ico"), LoadIcon("SDBackupAttention.ico"));
+        var tray = new TrayIcon(LoadIcon("Tray.ico"), LoadIcon("TrayAttention.ico"));
         var model = new AppModel(settings, library, log, new WindowsDialogs(), (title, body) => tray.Notify(title, body),
             Path.Combine(AppPaths.Data, "history.json"));
         var flyout = new FlyoutWindow { DataContext = model };

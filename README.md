@@ -1,8 +1,10 @@
-# SD Backup
+<img src="branding/notch.png" width="96" height="96" alt="Notch icon">
+
+# Notch
 
 A macOS menu bar app that imports SD cards straight into organised project folders.
 
-Insert a card. SD Backup reads it, works out the shoot dates and which cameras were used, and asks
+Insert a card. Notch reads it, works out the shoot dates and which cameras were used, and asks
 which project each shoot date belongs to: a new project or one of your last three. It then copies
 photos and videos into the right year, month, project and camera folders and verifies every copy.
 
@@ -51,9 +53,9 @@ Projects/
 
 ## Importing a card
 
-1. **Insert the card.** SD Backup reads it in the background. Nothing is copied yet.
+1. **Insert the card.** Notch reads it in the background. Nothing is copied yet.
 2. **A notification appears**, and the menu bar icon shows a count of cards waiting.
-3. **Click the SD card icon.** The Import panel lists every shoot date on the card with its
+3. **Click the Notch icon** (an SD card with a check) in the menu bar. The Import panel lists every shoot date on the card with its
    photo, video and audio counts. For each date, choose:
    - **New project** and type its name
    - **Same as** another new project on this card (for a multi-day shoot)
@@ -118,9 +120,12 @@ Imports wait while a year is being moved. Progress appears in the menu bar panel
 ./scripts/build-app.sh --install
 ```
 
-This compiles the app, puts `SD Backup.app` in `/Applications`, and launches it. An SD card icon
-appears in the menu bar. To build without installing, omit `--install`; the app is written to
-`build/SD Backup.app`.
+This compiles the app, puts `Notch.app` in `/Applications`, and launches it. The Notch icon
+(an SD card with a check) appears in the menu bar. To build without installing, omit `--install`; the app is
+written to `build/Notch.app`.
+
+The app was called SD Backup before. If `SD Backup.app` is installed, `--install` replaces it, and
+your settings, projects and import records carry over.
 
 ### First launch
 
@@ -129,7 +134,7 @@ macOS will ask for two permissions. Allow both:
 1. **Notifications**, so you know when a card is ready to import and when it's done.
 2. **Access to files on a removable volume**, which appears the first time a card is inserted.
    If you dismissed the prompt, enable it in
-   **System Settings › Privacy & Security › Files and Folders › SD Backup › Removable Volumes**.
+   **System Settings › Privacy & Security › Files and Folders › Notch › Removable Volumes**.
 
 When the app runs from `/Applications`, it registers itself to open at login the first time it
 starts. You can change this in Settings.
@@ -167,12 +172,13 @@ ejected. If macOS says the disk is still in use, eject it again.
 
 Each projects folder contains a hidden `.sdbackup` folder that identifies it and lists its
 projects, without any absolute paths. That's how moved projects are found again when the SSD
-mounts under a different name, and how a future Windows version can open the same folders. Don't
+mounts under a different name, and how the Windows version opens the same folders. Don't
 delete it.
 
 The rest of the app's memory is local to this Mac: `~/Library/Application Support/SD Backup` holds
 where each projects folder was last seen, a copy of the project list and the import records. The
-log is at `~/Library/Logs/SD Backup/backups.log`.
+log is at `~/Library/Logs/SD Backup/backups.log`. (These folders keep the app's earlier name, so
+nothing is lost when updating.)
 
 ## Development
 
@@ -199,10 +205,12 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackup/LibraryStore.swift` | Saved projects, camera names and import records. |
 | `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card. |
 | `Sources/SDBackup/Views/` | Control Center–style panel and the Settings window (SwiftUI). |
+| `Sources/SDBackup/MenuBarIcon.swift` | The menu bar icon, drawn in code. |
 | `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`. |
+| `branding/make_icons.py` | Draws the logo and writes the Mac and Windows icon files (`python3 branding/make_icons.py`). |
 
-**Windows:** [PORTING.md](PORTING.md) is the specification for a Windows version: the rules, the
-data formats, the Windows equivalents of each macOS API, and the tests to port.
+**Windows:** the Windows version is in [`windows/`](windows/). [PORTING.md](PORTING.md) is its
+specification: the rules, the data formats, the Windows equivalents of each macOS API, and the tests.
 
 The core module (`SDBackupCore`) has no UI and is covered by `Tests/SDBackupCoreTests`, including
 an end-to-end import of a mixed Canon/Sony/recorder card into the project structure.

@@ -1,7 +1,7 @@
 <Window x:Class="SDBackup.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SD Backup Settings"
+        Title="Notch Settings"
         Width="580"
         Height="760"
         MinWidth="480"
@@ -129,7 +129,7 @@
                         <Button Style="{StaticResource SubtleButton}" Content="Forget camera names" Command="{Binding ForgetCameraNamesCommand}" />
                     </StackPanel>
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,10,0,0"
-                               Text="SD Backup remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera." />
+                               Text="Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera." />
                 </StackPanel>
             </Border>
         </StackPanel>

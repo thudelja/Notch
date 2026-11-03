@@ -11,11 +11,13 @@ struct SDBackupApp: App {
                 .environmentObject(model.settings)
         } label: {
             if model.drafts.isEmpty {
-                Image(systemName: model.isBusy ? "sdcard.fill" : "sdcard")
+                Image(nsImage: model.isBusy ? MenuBarIcon.filled : MenuBarIcon.normal)
+                    .renderingMode(.template)
             } else {
                 // Cards waiting for a project.
                 HStack(spacing: 2) {
-                    Image(systemName: "sdcard.fill")
+                    Image(nsImage: MenuBarIcon.filled)
+                        .renderingMode(.template)
                     Text("\(model.drafts.count)")
                 }
             }

@@ -15,11 +15,11 @@ namespace SDBackup.Windows;
 /// <summary>Where the app keeps its files.</summary>
 public static class AppPaths
 {
-    /// <summary>%APPDATA%\SD Backup: settings, projects, import records.</summary>
-    public static string Data { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SD Backup");
+    /// <summary>%APPDATA%\Notch: settings, projects, import records.</summary>
+    public static string Data { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Notch");
 
-    /// <summary>%LOCALAPPDATA%\SD Backup\Logs</summary>
-    public static string Logs { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SD Backup", "Logs");
+    /// <summary>%LOCALAPPDATA%\Notch\Logs</summary>
+    public static string Logs { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Notch", "Logs");
 
     public static string DefaultProjectsFolder { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Projects");
@@ -43,7 +43,7 @@ public sealed class DriveWatcher : IDisposable
     public DriveWatcher()
     {
         _known = ReadyRoots();
-        _window = new HwndSource(new HwndSourceParameters("SD Backup drive watcher")
+        _window = new HwndSource(new HwndSourceParameters("Notch drive watcher")
         {
             WindowStyle = 0, // Not visible; a normal top-level window so it receives broadcasts.
             Width = 0,
@@ -109,7 +109,7 @@ public enum CardDetection
     AnyRemovable,
 }
 
-/// <summary>User preferences, saved to %APPDATA%\SD Backup\settings.json on every change.</summary>
+/// <summary>User preferences, saved to %APPDATA%\Notch\settings.json on every change.</summary>
 public sealed class AppSettings : ObservableObject
 {
     private sealed record Stored
@@ -195,7 +195,7 @@ public sealed class AppSettings : ObservableObject
     }
 }
 
-/// <summary>Appends a plain-text record of every import to %LOCALAPPDATA%\SD Backup\Logs\backups.log.</summary>
+/// <summary>Appends a plain-text record of every import to %LOCALAPPDATA%\Notch\Logs\backups.log.</summary>
 public sealed class BackupLog
 {
     private readonly object _lock = new();
@@ -232,7 +232,7 @@ public sealed class BackupLog
 public static class StartupRegistration
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "SD Backup";
+    private const string ValueName = "Notch";
 
     private static string Command => $"\"{Environment.ProcessPath}\" --background";
 

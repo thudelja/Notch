@@ -3,7 +3,7 @@
                     xmlns:w="clr-namespace:SDBackup.Windows;assembly=SDBackup.Windows">
 
     <!--
-        Windows 11 styling for SD Backup. The brushes below are defaults; ThemeManager replaces them at
+        Windows 11 styling for Notch. The brushes below are defaults; ThemeManager replaces them at
         startup (and when the Windows theme changes) to follow light/dark mode and the accent colour, so
         every use of a brush must be a DynamicResource.
     -->

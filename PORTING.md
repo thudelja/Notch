@@ -1,6 +1,6 @@
-# Porting SD Backup to Windows
+# Porting Notch to Windows
 
-This document is the specification for a Windows version of SD Backup. It describes **what the
+This document is the specification for the Windows version of Notch (formerly SD Backup). It describes **what the
 app does**, independent of Swift and macOS, so a Windows implementation behaves the same and can
 share projects folders (for example on an external SSD) with the Mac version.
 
@@ -286,7 +286,7 @@ These hold paths or IDs that only make sense on one computer. They are not share
 | Settings, camera names, history | UserDefaults (`destinationPath`, `autoBackupEnabled`, `cardDetection`, `verifyCopies`, `ejectWhenDone`, `notificationsEnabled`, `lastMigrationPath`, `cameraModelAliases`, `cameraCardAliases`, `importHistory`) | |
 | Log | `~/Library/Logs/SD Backup/backups.log` | plain text |
 
-Suggested Windows locations: `%APPDATA%\SD Backup\` for the files and `%LOCALAPPDATA%\SD Backup\Logs\` for the log.
+The Mac folders keep the app's earlier name, SD Backup, so existing data carries over. The Windows version uses `%APPDATA%\Notch\` for the files and `%LOCALAPPDATA%\Notch\Logs\` for the log.
 
 **Finding a projects folder again:** try `lastKnownPath`; it counts only if its `library.json` has
 the expected `libraryID`. Otherwise try `<root of each connected drive>/<pathOnVolume>`. On Mac the
@@ -340,7 +340,7 @@ The value is informational only.
 - **Time precision:** NTFS stores 100 ns, exFAT 10 ms, FAT 2 s. The 2-second tolerance covers all
   of them.
 - **AutoPlay:** Windows shows its own prompt when a card is inserted. Register the app as an
-  AutoPlay handler ("Import with SD Backup") rather than competing with it.
+  AutoPlay handler ("Import with Notch") rather than competing with it.
 - **Drive letters change:** never store them. Identify cards by volume serial and projects folders
   by `library.json` (section 7.2).
 

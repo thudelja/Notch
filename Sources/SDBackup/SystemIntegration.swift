@@ -25,7 +25,8 @@ enum AppActivation {
     }
 }
 
-/// Appends a plain-text record of every backup to ~/Library/Logs/SD Backup/backups.log.
+/// Appends a plain-text record of every backup to ~/Library/Logs/SD Backup/backups.log (the folder
+/// keeps the app's earlier name, like the Application Support folder).
 final class BackupLog {
     let url: URL
     private let queue = DispatchQueue(label: "SDBackup.log")

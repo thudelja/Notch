@@ -10,7 +10,7 @@ namespace SDBackup.Windows;
 /// <summary>
 /// Projects, the projects folders ("libraries") they live in, camera names and per-card import records.
 /// Portable data lives in each projects folder (.sdbackup\library.json); data local to this PC lives in
-/// %APPDATA%\SD Backup (PORTING.md §7).
+/// %APPDATA%\Notch (PORTING.md §7).
 /// </summary>
 public sealed class LibraryStore
 {
