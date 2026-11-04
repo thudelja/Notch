@@ -589,7 +589,7 @@ final class AppModel: ObservableObject {
     func chooseDestination() {
         let panel = NSOpenPanel()
         panel.title = "Choose Projects Folder"
-        panel.message = "Year folders (2026, 2027, …) with Photo and Video inside are created here."
+        panel.message = "Year folders (2026, 2027, …) with your projects inside are created here."
         panel.prompt = "Choose"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -644,6 +644,28 @@ final class AppModel: ObservableObject {
     /// Year folders in the projects folder that can be moved.
     func availableYears() -> [Int] {
         YearMigrator.years(in: settings.destinationURL)
+    }
+
+    // MARK: - Folder structure
+
+    /// The folder structure new projects get in the projects folder.
+    func folderStructure() -> FolderStructure {
+        library.structure(at: settings.destinationURL)
+    }
+
+    /// Saves the folder structure for new projects. Shows an alert and returns false when the
+    /// projects folder can't be written.
+    @discardableResult
+    func saveFolderStructure(_ structure: FolderStructure) -> Bool {
+        guard library.setStructure(structure, at: settings.destinationURL) else {
+            showAlert(
+                "The folder structure wasn’t saved",
+                "\(settings.abbreviatedDestination) can’t be written. If it’s on an external drive, connect it and try again."
+            )
+            return false
+        }
+        log.write(["Folder structure for new projects in \(settings.destinationURL.path):"] + structure.summary.map { "    " + $0 })
+        return true
     }
 
     /// Asks where to move `year`, confirms, then moves it in the background.

@@ -176,6 +176,13 @@ public sealed class FolderStructureTests : Sandbox
         Assert.Equal(["2026", "Video", "Exported", "11 November", "02.11.2026 Ana Wedding"], structure.ExportedPath(FolderStructure.Branch.Video, "Ana Wedding", Day));
         Assert.Equal("Exports: 2026 › Photo › Exported › 11 November › 02.11.2026 Name and 2026 › Video › Exported › 11 November › 02.11.2026 Name",
             structure.Summary[2]);
+        Assert.Equal(
+        [
+            new FolderExample("A photo", "2026/Photo/Unedited/11 November/02.11.2026 Ana Wedding/R5/IMG_0001.CR3"),
+            new FolderExample("A video", "2026/Video/Unedited/11 November/02.11.2026 Ana Wedding/Media/R5/C0001.MP4"),
+            new FolderExample("Photo exports", "2026/Photo/Exported/11 November/02.11.2026 Ana Wedding/"),
+            new FolderExample("Video exports", "2026/Video/Exported/11 November/02.11.2026 Ana Wedding/"),
+        ], structure.Examples("/"));
 
         Import(structure, out _);
         AssertFiles(
@@ -222,13 +229,19 @@ public sealed class FolderStructureTests : Sandbox
     [Fact]
     public void WithoutPhotoVideoFoldersOneExportedFolderIsShared()
     {
-        var structure = new FolderStructure { Levels = [SplitLevel(), ProjectLevel()] };
+        var structure = new FolderStructure { Levels = [SplitLevel(), ProjectLevel()], CameraFolders = false };
         Assert.Equal("Exports: 2026 › Exported › 02.11.2026 Name", structure.Summary[2]);
+        Assert.Equal(
+        [
+            new FolderExample("A photo", @"2026\Unedited\02.11.2026 Ana Wedding\IMG_0001.CR3"),
+            new FolderExample("A video", @"2026\Unedited\02.11.2026 Ana Wedding\Media\C0001.MP4"),
+            new FolderExample("Exports", @"2026\Exported\02.11.2026 Ana Wedding\"),
+        ], structure.Examples(@"\"));
 
         Import(structure, out var plan);
         Assert.Single(plan.FoldersToCreate, f => f.EndsWith("Exported" + Path.DirectorySeparatorChar + "02.11.2026 Ana Wedding", StringComparison.Ordinal));
         AssertEmptyFolders("2026/Exported/02.11.2026 Ana Wedding");
-        AssertFiles("2026/Unedited/02.11.2026 Ana Wedding/R5/IMG_0001.CR3", "2026/Unedited/02.11.2026 Ana Wedding/Media/R5/MVI_0002.MP4");
+        AssertFiles("2026/Unedited/02.11.2026 Ana Wedding/IMG_0001.CR3", "2026/Unedited/02.11.2026 Ana Wedding/Media/MVI_0002.MP4");
     }
 
     // ------------------------------------------------------------------ Checking

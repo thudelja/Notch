@@ -1,4 +1,5 @@
 import AppKit
+import SDBackupCore
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +7,8 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: AppSettings
     @State private var years: [Int] = []
     @State private var selectedYear = 0
+    @State private var structure: FolderStructure = .standard
+    @State private var editingStructure = false
 
     var body: some View {
         Form {
@@ -19,10 +22,17 @@ struct SettingsView: View {
                     Spacer()
                     Button("Change…") { model.chooseDestination() }
                 }
-                Text("Photos: 2026 › Photo › 11 November › 02.11.2026 Name › Camera\nVideos: 2026 › Video › 11 November › 02.11.2026 Name › Media › Camera, plus Project, Assets and Export folders.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top) {
+                    Text(verbatim: structure.summary.joined(separator: "\n"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Folder Structure…") {
+                        structure = model.folderStructure()
+                        editingStructure = true
+                    }
+                }
             }
 
             Section("Move a year to another drive") {
@@ -118,9 +128,17 @@ struct SettingsView: View {
         .onChange(of: model.migration == nil) { _ in reloadYears() }
         .onChange(of: settings.destinationPath) { _ in reloadYears() }
         .onAppear { reloadYears() }
+        .sheet(isPresented: $editingStructure) {
+            FolderStructureView(structure: structure) { edited in
+                guard model.saveFolderStructure(edited) else { return false }
+                structure = model.folderStructure()
+                return true
+            }
+        }
     }
 
     private func reloadYears() {
+        structure = model.folderStructure()
         years = model.availableYears()
         if !years.contains(selectedYear), let oldest = years.first {
             selectedYear = oldest

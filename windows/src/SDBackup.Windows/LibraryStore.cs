@@ -148,6 +148,32 @@ public sealed class LibraryStore
         if (changed) SaveLocations();
     }
 
+    // ------------------------------------------------------------------ Folder structure
+
+    /// <summary>The folder structure new projects in the projects folder at <paramref name="root"/> get.</summary>
+    public FolderStructure Structure(string root) =>
+        LibraryManifest.Read(PathUtil.Normalize(root))?.Layout ?? FolderStructure.Standard;
+
+    /// <summary>
+    /// Saves the folder structure new projects in the projects folder at <paramref name="root"/> get. Existing projects
+    /// keep theirs. False when the folder isn't available.
+    /// </summary>
+    public bool SetStructure(FolderStructure structure, string root)
+    {
+        root = PathUtil.Normalize(root);
+        if (!structure.IsValid || Library(root) is not Guid libraryId) return false;
+        var manifest = LibraryManifest.Read(root) ?? LibraryManifest.Create(libraryId, _projects.Where(p => p.LibraryId == libraryId));
+        try
+        {
+            (manifest with { Structure = structure }).Write(root);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     // ------------------------------------------------------------------ Projects
 
     public IReadOnlyList<ProjectInfo> RecentProjects(int limit = 3) =>
@@ -163,9 +189,10 @@ public sealed class LibraryStore
         var rootPath = PathUtil.Normalize(root);
         var existing = _projects.FirstOrDefault(p =>
             p.LibraryId == libraryId && p.StartDay == startDay && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase));
-        return existing is not null
-            ? existing with { RootPath = rootPath }
-            : new ProjectInfo { Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = rootPath };
+        if (existing is not null) return existing with { RootPath = rootPath };
+        // A new project follows the folder's current structure, and keeps it from then on.
+        var structure = LibraryManifest.Read(rootPath)?.Structure;
+        return new ProjectInfo { Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = rootPath, Structure = structure };
     }
 
     /// <summary>Saves new projects and moves these to the top of the recent list.</summary>
@@ -288,11 +315,14 @@ public sealed class LibraryStore
         }
     }
 
-    /// <summary>Rewrites the folder's manifest only if it would change, so connecting a drive doesn't rewrite it needlessly.</summary>
+    /// <summary>
+    /// Rewrites the folder's manifest only if it would change, so connecting a drive doesn't rewrite it needlessly. The
+    /// folder's structure is kept.
+    /// </summary>
     private void WriteManifest(Guid libraryId, string root)
     {
-        var updated = LibraryManifest.Create(libraryId, _projects.Where(p => p.LibraryId == libraryId));
         var existing = LibraryManifest.Read(root);
+        var updated = LibraryManifest.Create(libraryId, _projects.Where(p => p.LibraryId == libraryId), existing?.Structure);
         if (existing is not null && (existing.LibraryId != libraryId || existing.Serialized() == updated.Serialized())) return;
         try { updated.Write(root); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }

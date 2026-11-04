@@ -306,6 +306,33 @@ public sealed record FolderStructure
         }
     }
 
+    /// <summary>Sample paths for the structure editor: where a photo and a video go, and with a split the empty Exported folders.</summary>
+    public IReadOnlyList<FolderExample> Examples(string separator)
+    {
+        var day = new ShootDay(2026, 11, 2);
+        const string name = "Ana Wedding";
+        string[] camera = CameraFolders ? ["R5"] : [];
+        string[] media = MediaFolder.Length > 0 ? [Safe(MediaFolder, "Media")] : [];
+        var examples = new List<FolderExample>
+        {
+            new("A photo", string.Join(separator, [.. FilesPath(Branch.Photo, name, day), .. camera, "IMG_0001.CR3"])),
+            new("A video", string.Join(separator, [.. FilesPath(Branch.Video, name, day), .. media, .. camera, "C0001.MP4"])),
+        };
+        if (ExportedPath(Branch.Photo, name, day) is { } photo && ExportedPath(Branch.Video, name, day) is { } video)
+        {
+            if (photo.SequenceEqual(video))
+            {
+                examples.Add(new("Exports", string.Join(separator, photo) + separator));
+            }
+            else
+            {
+                examples.Add(new("Photo exports", string.Join(separator, photo) + separator));
+                examples.Add(new("Video exports", string.Join(separator, video) + separator));
+            }
+        }
+        return examples;
+    }
+
     private static string Arrow(IEnumerable<string> components) => string.Join(" › ", components);
 
     private static string List(IReadOnlyList<string> names) => names.Count switch
@@ -315,6 +342,9 @@ public sealed record FolderStructure
         _ => string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1],
     };
 }
+
+/// <summary>A sample path in the structure editor.</summary>
+public sealed record FolderExample(string Title, string Path);
 
 /// <summary>Enum values as camelCase strings ("mediaType"), like the Mac version's raw values.</summary>
 public sealed class CamelCaseEnumConverter() : JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false);

@@ -26,7 +26,7 @@ public struct LibraryManifest: Codable, Sendable, Equatable {
         self.formatVersion = Self.currentFormatVersion
         self.libraryID = libraryID
         self.projects = projects.map(\.portable)
-        self.structure = structure == .standard ? nil : structure
+        self.structure = structure == FolderStructure.standard ? nil : structure
     }
 
     public init(from decoder: Decoder) throws {

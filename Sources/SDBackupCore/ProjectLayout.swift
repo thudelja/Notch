@@ -39,7 +39,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         self.name = name
         self.startDay = startDay
         self.libraryID = libraryID
-        self.structure = structure == .standard ? nil : structure
+        self.structure = structure == FolderStructure.standard ? nil : structure
         self.rootPath = rootPath
         self.lastUsed = lastUsed
     }

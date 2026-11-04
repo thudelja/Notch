@@ -99,6 +99,12 @@ public struct FolderLevel: Codable, Hashable, Sendable {
     }
 }
 
+/// A sample path in the structure editor.
+public struct FolderExample: Hashable, Sendable {
+    public let title: String
+    public let path: String
+}
+
 /// How a projects folder lays out its projects, below the year folder (which always comes first, so
 /// a year can be moved to another drive as one folder).
 ///
@@ -298,6 +304,28 @@ public struct FolderStructure: Codable, Hashable, Sendable {
                 : "Exports: " + Self.arrow(photoExports) + " and " + Self.arrow(videoExports))
         }
         return lines
+    }
+
+    /// Sample paths for the structure editor: where a photo and a video go, and with a split the
+    /// empty Exported folders.
+    public func examples(separator: String) -> [FolderExample] {
+        let day = ShootDay(year: 2026, month: 11, day: 2)
+        let name = "Ana Wedding"
+        let camera: [String] = cameraFolders ? ["R5"] : []
+        let media: [String] = mediaFolder.isEmpty ? [] : [Self.safe(mediaFolder, fallback: "Media")]
+        var examples = [
+            FolderExample(title: "A photo", path: (filesPath(.photo, name: name, startDay: day) + camera + ["IMG_0001.CR3"]).joined(separator: separator)),
+            FolderExample(title: "A video", path: (filesPath(.video, name: name, startDay: day) + media + camera + ["C0001.MP4"]).joined(separator: separator)),
+        ]
+        if let photo = exportedPath(.photo, name: name, startDay: day), let video = exportedPath(.video, name: name, startDay: day) {
+            if photo == video {
+                examples.append(FolderExample(title: "Exports", path: photo.joined(separator: separator) + separator))
+            } else {
+                examples.append(FolderExample(title: "Photo exports", path: photo.joined(separator: separator) + separator))
+                examples.append(FolderExample(title: "Video exports", path: video.joined(separator: separator) + separator))
+            }
+        }
+        return examples
     }
 
     static func arrow(_ components: [String]) -> String {

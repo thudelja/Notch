@@ -5,8 +5,9 @@ import SDBackupCore
 /// records.
 ///
 /// Portable data, stored in each projects folder:
-/// - `.sdbackup/library.json`: the folder's ID and its projects, without absolute paths. A drive
-///   mounted under another name, or read by a Windows version, still makes sense.
+/// - `.sdbackup/library.json`: the folder's ID, its projects (without absolute paths) and the folder
+///   structure new projects get. A drive mounted under another name, or read by a Windows version,
+///   still makes sense.
 ///
 /// Data local to this Mac, in ~/Library/Application Support/SD Backup (the app's name before it
 /// was called Notch; kept so existing settings, projects and import records carry over):
@@ -137,6 +138,24 @@ final class LibraryStore {
         }
     }
 
+    // MARK: - Folder structure
+
+    /// The folder structure new projects in the projects folder at `root` get.
+    func structure(at root: URL) -> FolderStructure {
+        LibraryManifest.read(from: root.standardizedFileURL)?.layout ?? .standard
+    }
+
+    /// Saves the folder structure new projects in the projects folder at `root` get. Existing
+    /// projects keep theirs. False when the folder isn't available.
+    func setStructure(_ structure: FolderStructure, at root: URL) -> Bool {
+        let root = root.standardizedFileURL
+        guard structure.isValid, let libraryID = library(at: root) else { return false }
+        var manifest = LibraryManifest.read(from: root)
+            ?? LibraryManifest(libraryID: libraryID, projects: projects.filter { $0.libraryID == libraryID })
+        manifest.structure = structure == .standard ? nil : structure
+        return (try? manifest.write(to: root)) != nil
+    }
+
     // MARK: - Projects
 
     func recentProjects(limit: Int = 3) -> [ProjectInfo] {
@@ -159,7 +178,9 @@ final class LibraryStore {
             existing.rootPath = rootPath
             return existing
         }
-        return ProjectInfo(name: trimmed, startDay: startDay, libraryID: libraryID, rootPath: rootPath)
+        // A new project follows the folder's current structure, and keeps it from then on.
+        let structure = LibraryManifest.read(from: root.standardizedFileURL)?.structure
+        return ProjectInfo(name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure, rootPath: rootPath)
     }
 
     /// Saves new projects and moves the given ones to the top of the recent list.
@@ -307,13 +328,16 @@ final class LibraryStore {
     }
 
     /// Rewrites the folder's manifest if it would change, so connecting a drive doesn't
-    /// rewrite files on it needlessly.
+    /// rewrite files on it needlessly. The folder's structure is kept.
     private func writeManifest(for libraryID: UUID, at root: URL) {
-        let updated = LibraryManifest(libraryID: libraryID, projects: projects.filter { $0.libraryID == libraryID })
-        if let existing = LibraryManifest.read(from: root) {
-            guard existing.libraryID == libraryID else { return }
-            if Self.encoded(existing) == Self.encoded(updated) { return }
-        }
+        let existing = LibraryManifest.read(from: root)
+        if let existing, existing.libraryID != libraryID { return }
+        let updated = LibraryManifest(
+            libraryID: libraryID,
+            projects: projects.filter { $0.libraryID == libraryID },
+            structure: existing?.structure
+        )
+        if let existing, Self.encoded(existing) == Self.encoded(updated) { return }
         try? updated.write(to: root)
     }
 

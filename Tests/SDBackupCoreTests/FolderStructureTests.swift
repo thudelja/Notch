@@ -178,6 +178,12 @@ final class FolderStructureTests: XCTestCase {
         XCTAssertEqual(structure.exportedPath(.photo, name: "Ana Wedding", startDay: day), ["2026", "Photo", "Exported", "11 November", "02.11.2026 Ana Wedding"])
         XCTAssertEqual(structure.exportedPath(.video, name: "Ana Wedding", startDay: day), ["2026", "Video", "Exported", "11 November", "02.11.2026 Ana Wedding"])
         XCTAssertEqual(structure.summary[2], "Exports: 2026 › Photo › Exported › 11 November › 02.11.2026 Name and 2026 › Video › Exported › 11 November › 02.11.2026 Name")
+        XCTAssertEqual(structure.examples(separator: "/"), [
+            FolderExample(title: "A photo", path: "2026/Photo/Unedited/11 November/02.11.2026 Ana Wedding/R5/IMG_0001.CR3"),
+            FolderExample(title: "A video", path: "2026/Video/Unedited/11 November/02.11.2026 Ana Wedding/Media/R5/C0001.MP4"),
+            FolderExample(title: "Photo exports", path: "2026/Photo/Exported/11 November/02.11.2026 Ana Wedding/"),
+            FolderExample(title: "Video exports", path: "2026/Video/Exported/11 November/02.11.2026 Ana Wedding/"),
+        ])
 
         try await importCard(structure)
         assertFiles(
@@ -223,13 +229,18 @@ final class FolderStructureTests: XCTestCase {
     }
 
     func testWithoutPhotoVideoFoldersOneExportedFolderIsShared() async throws {
-        let structure = FolderStructure(levels: [.split(), .project()])
+        let structure = FolderStructure(levels: [.split(), .project()], cameraFolders: false)
         XCTAssertEqual(structure.summary[2], "Exports: 2026 › Exported › 02.11.2026 Name")
+        XCTAssertEqual(structure.examples(separator: "/"), [
+            FolderExample(title: "A photo", path: "2026/Unedited/02.11.2026 Ana Wedding/IMG_0001.CR3"),
+            FolderExample(title: "A video", path: "2026/Unedited/02.11.2026 Ana Wedding/Media/C0001.MP4"),
+            FolderExample(title: "Exports", path: "2026/Exported/02.11.2026 Ana Wedding/"),
+        ])
 
         let plan = try await importCard(structure)
         XCTAssertEqual(plan.foldersToCreate.filter { $0.path.hasSuffix("Exported/02.11.2026 Ana Wedding") }.count, 1)
         assertEmptyFolders("2026/Exported/02.11.2026 Ana Wedding")
-        assertFiles("2026/Unedited/02.11.2026 Ana Wedding/R5/IMG_0001.CR3", "2026/Unedited/02.11.2026 Ana Wedding/Media/R5/MVI_0002.MP4")
+        assertFiles("2026/Unedited/02.11.2026 Ana Wedding/IMG_0001.CR3", "2026/Unedited/02.11.2026 Ana Wedding/Media/MVI_0002.MP4")
     }
 
     // MARK: - Checking
