@@ -136,6 +136,9 @@ public sealed class AppModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where new projects go (Settings › Projects folder).</summary>
+    public string FolderStructureSummary => string.Join(Environment.NewLine, Library.Structure(Settings.ProjectsFolder).Summary);
+
     public bool CanMoveYear => !IsMigrating && _activeJob is null && Years.Contains(SelectedYear);
     public bool HasYears => Years.Count > 0;
 
@@ -578,6 +581,7 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     public void RefreshYears()
     {
+        OnPropertyChanged(nameof(FolderStructureSummary));
         var years = YearMigrator.Years(Settings.ProjectsFolder);
         if (!Years.SequenceEqual(years))
         {
@@ -832,9 +836,29 @@ public sealed class AppModel : ObservableObject, IDisposable
         Shell.Open(Log.FilePath);
     }
 
+    // ------------------------------------------------------------------ Folder structure
+
+    /// <summary>An editor for the folder structure new projects get in the projects folder (Settings › Folder structure…).</summary>
+    public FolderStructureEditor CreateFolderStructureEditor() =>
+        new(Library.Structure(Settings.ProjectsFolder), SaveFolderStructure);
+
+    /// <summary>Saves the structure for new projects; alerts and returns false when the projects folder can't be written.</summary>
+    private bool SaveFolderStructure(FolderStructure structure)
+    {
+        if (!Library.SetStructure(structure, Settings.ProjectsFolder))
+        {
+            _dialogs.Alert("The folder structure wasn’t saved",
+                $"{Settings.ProjectsFolder} can’t be written. If it’s on an external drive, connect it and try again.");
+            return false;
+        }
+        Log.Write(structure.Summary.Select(line => "    " + line).Prepend($"Folder structure for new projects in {Settings.ProjectsFolder}:"));
+        OnPropertyChanged(nameof(FolderStructureSummary));
+        return true;
+    }
+
     private void ChangeProjectsFolder()
     {
-        var folder = _dialogs.PickFolder("Choose the projects folder. Year folders (2026, 2027, …) with Photo and Video inside are created here.",
+        var folder = _dialogs.PickFolder("Choose the projects folder. Year folders (2026, 2027, …) with your projects inside are created here.",
             Settings.ProjectsFolder);
         if (folder is null) return;
         Settings.ProjectsFolder = folder;

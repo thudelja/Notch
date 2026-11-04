@@ -12,8 +12,8 @@ folder on an exFAT SSD works on both.
   asks which project each shoot date belongs to (a new project or one of your last three).
 - Copies into `Projects\2026\Photo\11 November\02.11.2026 Name\<Camera>\` and
   `Projects\2026\Video\11 November\02.11.2026 Name\Media\<Camera>\` (plus `Project`, `Assets`,
-  `Export`), verifies every file with SHA-256, never overwrites, and only offers new files when a
-  card comes back.
+  `Export`), or into a structure of your own, verifies every file with SHA-256, never overwrites, and
+  only offers new files when a card comes back.
 - **Moves a whole year** to an external drive from Settings, deleting each file from the PC only
   after its copy is verified.
 - Follows Windows' light/dark mode and accent colour.
@@ -78,6 +78,13 @@ The panel shows, from top to bottom:
 - **Progress:** reading a card, an import, or a year being moved, each with a cancel button.
 - **Cards:** connected cards, when each was last imported, and **Import** and **Eject** buttons.
 - **Recent:** the last imports. Click one to open its folder.
+
+**Settings › Folder structure…** changes how new projects are laid out below the year folder: Photo /
+Video (renamed or left out), the month (number, name or both, English or Slovenian names), folders with
+a fixed name, the project folder's date format and order, an optional **Unedited / Exported** pair
+(imports go into the first; an empty second folder with the same path is made for exports), camera
+folders on or off, and the folders in each video project. The structure is saved in the projects folder,
+so a drive shared with the Mac builds the same folders. Existing projects keep their folders.
 
 In **Settings › After importing** you can have Notch open the new photos of every import in
 **Lightroom Classic** or **Lightroom**. The app opens its own import window with them (videos aren't

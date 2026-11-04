@@ -13,8 +13,8 @@ using SDBackup.Windows;
 namespace SDBackup.App;
 
 /// <summary>
-/// <c>Notch.exe --self-test &lt;folder&gt;</c>: opens the panel and the settings window with sample data in light
-/// and dark mode, fails on any XAML error or data-binding error, and writes screenshots and a report to the
+/// <c>Notch.exe --self-test &lt;folder&gt;</c>: opens the panel, the settings window and the folder structure editor with
+/// sample data in light and dark mode, fails on any XAML error or data-binding error, and writes screenshots and a report to the
 /// folder. CI runs this on Windows to catch problems a compiler can't.
 /// </summary>
 internal static class SelfTest
@@ -91,6 +91,31 @@ internal static class SelfTest
                     Settle();
                     Save(settings, Path.Combine(folder, $"settings-{theme}-scrolled.png"));
                 }
+
+                // The folder structure editor, with every kind of level and a problem to show.
+                var editor = model.CreateFolderStructureEditor();
+                editor.AddSplitCommand.Execute(null);
+                editor.AddFolderCommand.Execute(null);
+                editor.Levels.First(l => l.IsText).Text = "";
+                editor.CameraFolders = false;
+                var structureWindow = new FolderStructureWindow(editor) { Owner = settings };
+                structureWindow.Show();
+                Settle();
+                Save(structureWindow, Path.Combine(folder, $"structure-{theme}.png"));
+                report.Add($"Folder structure ({theme}): {editor.Levels.Count} levels, {editor.Problems.Count} problem(s), {editor.Examples.Count} examples");
+                if (editor.Problems.Count != 1) throw new InvalidOperationException($"Expected one problem in the edited structure, got: {string.Join(" ", editor.Problems)}");
+                var pickers = Descendants<ComboBox>(structureWindow).Where(box => box.IsVisible).ToList();
+                if (pickers.Count == 0 || pickers.Any(box => box.SelectedItem is null))
+                {
+                    throw new InvalidOperationException($"{pickers.Count(box => box.SelectedItem is null)} of {pickers.Count} folder structure picker(s) show no selection.");
+                }
+                if (Descendants<ScrollViewer>(structureWindow).FirstOrDefault() is { ScrollableHeight: > 0 } structureScroller)
+                {
+                    structureScroller.ScrollToEnd();
+                    Settle();
+                    Save(structureWindow, Path.Combine(folder, $"structure-{theme}-scrolled.png"));
+                }
+                structureWindow.Close();
 
                 flyout.Close();
                 settings.Close();

@@ -39,7 +39,9 @@ Port the core first, with its tests (section 10), then build the Windows app aro
 ## 2. Folder layout
 
 Everything goes into a **projects folder** chosen by the user (Mac default:
-`~/Pictures/Projects`; suggested Windows default: `%USERPROFILE%\Pictures\Projects`).
+`~/Pictures/Projects`; suggested Windows default: `%USERPROFILE%\Pictures\Projects`). The
+**standard structure** below is the default; the user can choose another for new projects
+(section 2.1).
 
 ```
 <projects folder>/
@@ -65,9 +67,10 @@ Everything goes into a **projects folder** chosen by the user (Mac default:
 | Month | Two-digit month, space, English month name (fixed, not localised) | `11 November`, `01 January` |
 | Project folder | Start day as `DD.MM.YYYY`, space, sanitised project name | `02.11.2026 Ana Wedding` |
 | Camera folder | Sanitised camera name, fallback `Camera` | `R5`, `A7 IV`, `Zoom H5` |
-| Video subfolders | Exactly `Media`, `Project`, `Assets`, `Export`, created when a video project receives its first file | |
+| Video subfolders | `Media`, `Project`, `Assets`, `Export`, created when a video project receives files | |
 
-- A project's folders are always derived from its **name and start day**, never stored.
+- A project's folders are always derived from its **name, start day and structure**, never stored
+  as paths.
 - A project keeps the folder of its **first** shoot day. Later days go into the same folder.
 - A camera folder is created **even when only one camera was used**, so files never move later.
 - **File names are never changed**, except that a different file with a name that is already taken
@@ -83,6 +86,73 @@ drives get the same folder names:
    `COM1`–`COM9`, `LPT1`–`LPT9`, any case), prefix `_`.
 
 Examples: `What? Yes*` → `What- Yes-`, `CON` → `_CON`, `Trailing dots. . ` → `Trailing dots`.
+
+### 2.1 Your own folder structure
+
+Settings › *Folder Structure…* sets the structure new projects get in the current projects folder
+(`FolderStructure`). It is saved in that folder's `library.json` (section 7.1), so every computer
+builds the same folders. A structure has:
+
+| Field | Meaning | Standard |
+| --- | --- | --- |
+| `levels` | The folders below the year, top first (table below) | Photo/Video, month, project |
+| `cameraFolders` | A folder per camera for the files | `true` |
+| `videoFolders` | Folders made in every video project that receives files | `Media`, `Project`, `Assets`, `Export` |
+| `mediaFolder` | The one of `videoFolders` that receives videos and audio; `""` puts them in the project folder | `Media` |
+
+Each level is an object with a `kind` and that kind's options; options a kind doesn't use are left
+out of the JSON.
+
+| `kind` | Options | Folder name |
+| --- | --- | --- |
+| `mediaType` | `photo`, `video` (folder names) | `Photo` for photos, `Video` for videos and audio |
+| `month` | `monthStyle`: `numberAndName`, `number`, `name`; `monthLanguage`: `english`, `slovenian` | `11 November`, `11`, `November`; Slovenian names are lower case (`11 november`, `03 marec`) |
+| `text` | `text` | That fixed name, e.g. `Clients` |
+| `split` | `unedited`, `exported` (folder names) | Files go into `unedited`; an empty `exported` folder is made (below) |
+| `project` | `dateFormat`: `dayMonthYear`, `yearMonthDay`, `compact`; `nameOrder`: `dateFirst`, `nameFirst` | `02.11.2026 Ana Wedding`, `2026-11-02 Ana Wedding`, `20261102 Ana Wedding`, `Ana Wedding 02.11.2026` |
+
+**Rules** (`FolderStructure.problems` words them for the editor; a structure with problems can't be
+saved):
+
+- The **year** is always the first folder and isn't a level, so a year can still be moved as one
+  folder (section 6).
+- Exactly one `project` level. Only a `split` may come after it. At most one `mediaType`, `month`
+  and `split`.
+- No blank names. `photo` ≠ `video` and `unedited` ≠ `exported` (ignoring case and surrounding
+  spaces). Video folders are unique (ignoring case); `mediaFolder` is one of them or `""`.
+- Every name is cleaned up like a project name (section 2), with the fallbacks `Photo`, `Video`,
+  `Folder`, `Unedited`, `Exported` and `Media`.
+
+**Paths.** A project's **files folder** for photos or videos is the year followed by each level's
+folder (a `split` contributes its `unedited` name). Photos go into `<files folder>/<camera>`;
+videos and audio into `<files folder>/<mediaFolder>/<camera>` (without camera folders, the camera
+part is left out; with `mediaFolder` `""`, the media part). A video project receiving files gets
+each of `videoFolders` inside its video files folder.
+
+**Exported folders** (only with a `split`): above the project folder, it is the same path down to
+the project folder with the `exported` name in place of the `unedited` one; inside the project
+folder, it is `<project folder>/<exported>`. An import creates it, empty, for each project and
+branch (photo, video) that receives files; without a `mediaType` level both branches share one.
+Example with `2026 › Photo/Video › Unedited/Exported › month › project`:
+
+```
+2026/Photo/Unedited/11 November/02.11.2026 Ana Wedding/R5/IMG_0001.CR3
+2026/Photo/Exported/11 November/02.11.2026 Ana Wedding/          ← empty
+2026/Video/Unedited/11 November/02.11.2026 Ana Wedding/Media/R5/C0001.MP4
+2026/Video/Exported/11 November/02.11.2026 Ana Wedding/          ← empty
+```
+
+**Existing projects never move.** A new project stores a copy of the projects folder's structure
+(`structure` in section 7.1), and its folders are always built from that copy. A project without
+one, including every project made before structures existed, uses the standard structure.
+Changing the structure therefore only affects projects created afterwards, and adding a day to an
+existing project still puts the files in its folder.
+
+**Compatibility.** A structure equal to the standard one is stored as absent. A structure a
+version can't read (an unknown `kind` or option value, a wrong type) or that breaks the rules is
+read as absent, without failing the rest of the file. A version that reads a structure as absent
+writes the file without it, so extend the format with new optional fields whose absence means the
+current behaviour, rather than new kinds or values, wherever possible.
 
 ## 3. Reading a card
 
@@ -180,10 +250,12 @@ per card for files without camera info.
 
    Below the days, the user can edit the **camera folder names**.
 4. **Resolve projects.** A new project starts on the **earliest** day assigned to it and is
-   created in the current projects folder. If a project with the same name (case-insensitive),
-   start day and projects folder already exists, it is reused.
-5. **Plan:** each file goes to `targetDirectory(kind, project, camera)` (section 2); sidecars go
-   with their file. Video projects receiving files get their four subfolders.
+   created in the current projects folder, with a copy of that folder's structure (section 2.1).
+   If a project with the same name (case-insensitive), start day and projects folder already
+   exists, it is reused.
+5. **Plan:** each file goes to `targetDirectory(kind, project, camera)` (sections 2 and 2.1);
+   sidecars go with their file. Video projects receiving files get their video folders; with an
+   Unedited / Exported split, projects receiving files get their empty Exported folders.
 6. **Copy** with the copy engine (section 5) into the projects' folder. Projects moved to another
    drive are imported there, and the import is refused if that drive isn't connected.
 7. **Record:** every file that is now safely in place (copied, or an identical copy was already
@@ -270,17 +342,32 @@ This file makes a projects folder portable between computers and operating syste
       "name" : "Ana Wedding",
       "startDay" : { "day" : 2, "month" : 11, "year" : 2026 }
     }
-  ]
+  ],
+  "structure" : {
+    "cameraFolders" : true,
+    "levels" : [
+      { "kind" : "mediaType", "photo" : "Photo", "video" : "Video" },
+      { "exported" : "Exported", "kind" : "split", "unedited" : "Unedited" },
+      { "kind" : "month", "monthLanguage" : "english", "monthStyle" : "numberAndName" },
+      { "dateFormat" : "dayMonthYear", "kind" : "project", "nameOrder" : "dateFirst" }
+    ],
+    "mediaFolder" : "Media",
+    "videoFolders" : [ "Media", "Project", "Assets", "Export" ]
+  }
 }
 ```
 
 - `libraryID` identifies the projects folder. A folder without the file gets one with a new ID the
   first time it is used.
-- A project's folders are derived: `relativePhotoFolder` = `["2026", "Photo", "11 November",
-  "02.11.2026 Ana Wedding"]`, joined with the OS separator under the projects folder.
+- `structure` (optional) is the folder structure for new projects (section 2.1); absent means
+  standard. A project may have its own `structure`, the one it was created with (above, the
+  project was made before the structure changed, so it has none and keeps the standard folders).
+- A project's folders are derived from its own structure: with the standard one,
+  `relativePhotoFolder` = `["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"]`, joined with
+  the OS separator under the projects folder.
 - When a folder is opened, its projects are merged into the local list. A project already known
   locally is replaced only if the file's `lastUsed` is newer. Write the file only when its content
-  would change.
+  would change, and keep its `structure` when rewriting it.
 - On Windows, set the Hidden attribute on `.sdbackup`.
 
 ### 7.2 Local to each computer
@@ -360,6 +447,7 @@ The core tests describe the required behaviour. Port them first, then make them 
 | File | Tests | Covers |
 | --- | --- | --- |
 | `BackupEngineTests.swift` | 15 | Structure and dates, incremental runs, never overwriting, time-zone shifts, same size with different bytes, numbered names, skipped metadata, empty files, progress, refusing unsafe destinations, cancellation, name rules |
-| `ProjectImportTests.swift` | 11 | Classification, sidecar pairing, camera short names, date parsing, Sony XML, folder names, import records, card analysis, end-to-end import into the project layout |
+| `ProjectImportTests.swift` | 12 | Classification, sidecar pairing, camera short names, date parsing, Sony XML, folder names, import records, card analysis, end-to-end import into the project layout, the photo hand-off |
 | `YearMigratorTests.swift` | 7 | Moving a year, resuming, strict duplicate checks, leftovers, refusing the same folder, disconnected drives, listing years |
 | `ProjectLibraryTests.swift` | 7 | `library.json` without absolute paths, stable IDs, finding a folder at a new mount point, rejecting look-alikes, relative project folders |
+| `FolderStructureTests.swift` | 15 | The standard structure matches section 2, month and date styles, custom structures, Unedited / Exported above and inside the project folder, validation, projects keeping their structure, `structure` in `library.json` (round trip, the other platform's JSON, unreadable structures), moving a year |

@@ -315,8 +315,8 @@ public sealed record FolderStructure
         string[] media = MediaFolder.Length > 0 ? [Safe(MediaFolder, "Media")] : [];
         var examples = new List<FolderExample>
         {
-            new("A photo", string.Join(separator, [.. FilesPath(Branch.Photo, name, day), .. camera, "IMG_0001.CR3"])),
-            new("A video", string.Join(separator, [.. FilesPath(Branch.Video, name, day), .. media, .. camera, "C0001.MP4"])),
+            new("A photo", string.Join(separator, FilesPath(Branch.Photo, name, day).Concat(camera).Append("IMG_0001.CR3"))),
+            new("A video", string.Join(separator, FilesPath(Branch.Video, name, day).Concat(media).Concat(camera).Append("C0001.MP4"))),
         };
         if (ExportedPath(Branch.Photo, name, day) is { } photo && ExportedPath(Branch.Video, name, day) is { } video)
         {

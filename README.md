@@ -61,6 +61,28 @@ Projects/
   next to the file they belong to. **Audio** (`.WAV` etc.) goes to the video project's
   `Media/<device>/`. Camera system and database files are skipped.
 
+### Your own structure
+
+**Settings › Folder Structure…** changes how new projects are laid out. Below the year folder,
+which always comes first, you build the levels from blocks: **Photo / Video** (rename them or leave
+them out), the **month** (`11 November`, `11` or `November`, English or Slovenian names),
+**folders with a fixed name** such as `Clients`, the **project folder** (`02.11.2026`, `2026-11-02` or
+`20261102`, before or after the name) and an optional **Unedited / Exported** pair. You can also turn
+camera folders off and choose the folders made in each video project. The editor shows example paths
+as you go.
+
+With Unedited / Exported, imports go into the first folder, and an empty Exported folder with the same
+path is made for your exports. For example `2026 › Photo/Video › Unedited/Exported`:
+
+```
+2026/Photo/Unedited/11 November/02.11.2026 Ana Wedding/R5/IMG_0001.CR3
+2026/Photo/Exported/11 November/02.11.2026 Ana Wedding/      ← empty, for exports
+```
+
+The structure is saved in the projects folder, so the Mac and Windows versions build the same folders
+on a shared drive. **Existing projects never move:** each project keeps the structure it was created
+with, and adding a day to it still puts the files in its folder.
+
 ## Importing a card
 
 1. **Insert the card.** Notch reads it in the background. Nothing is copied yet.
@@ -185,7 +207,7 @@ ejected. If macOS says the disk is still in use, eject it again.
 
 ## Settings
 
-- **Projects folder.**
+- **Projects folder**, and its **folder structure** (see above).
 - **Ask for a project as soon as a card is inserted.**
 - **Which cards count:** SD and camera cards, or any removable drive. External hard drives and
   SSDs are never included.
