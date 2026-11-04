@@ -6,10 +6,12 @@ namespace SDBackup.Core;
 
 /// <summary>
 /// A shoot that cards are imported into. Saved records contain no absolute paths: a project names its
-/// projects folder ("library") by ID, and its folders are derived from its name and start day.
+/// projects folder ("library") by ID, and its folders are derived from its name, start day and folder structure.
 /// </summary>
 public sealed record ProjectInfo
 {
+    private readonly FolderStructure? _structure;
+
     // Declared alphabetically, matching the Mac version's sorted JSON keys.
     [JsonPropertyName("id")] public Guid Id { get; init; } = Guid.NewGuid();
     [JsonPropertyName("lastUsed")] public DateTime LastUsed { get; init; } = DateTime.UtcNow;
@@ -17,17 +19,31 @@ public sealed record ProjectInfo
     [JsonPropertyName("name")] public string Name { get; init; } = "";
     [JsonPropertyName("startDay")] public ShootDay StartDay { get; init; }
 
+    /// <summary>
+    /// The folder structure the project was created with, or null for the standard one (all projects made before
+    /// structures could be changed). Kept with the project so changing the projects folder's structure never moves it.
+    /// </summary>
+    [JsonPropertyName("structure"), JsonConverter(typeof(TolerantStructureConverter))]
+    public FolderStructure? Structure
+    {
+        get => _structure;
+        init => _structure = value is { IsStandard: true } ? null : value;
+    }
+
     /// <summary>Where the projects folder is on this computer right now, or "" when its drive isn't connected. Never saved.</summary>
     [JsonIgnore] public string RootPath { get; init; } = "";
 
+    /// <summary>The structure the project's folders follow.</summary>
+    [JsonIgnore] public FolderStructure Layout => Structure is { IsValid: true } structure ? structure : FolderStructure.Standard;
+
     /// <summary>"02.11.2026 Ana Wedding"</summary>
-    [JsonIgnore] public string FolderName => ProjectLayout.ProjectFolderName(Name, StartDay);
+    [JsonIgnore] public string FolderName => Layout.ProjectFolderNameFor(Name, StartDay);
 
     /// <summary>The record as saved: without this computer's path.</summary>
     [JsonIgnore] public ProjectInfo Portable => this with { RootPath = "" };
 }
 
-/// <summary>Everything needed to copy a card's files into their projects.</summary>
+/// <summary>Everything needed to copy a card's files into their projects, plus the video project skeletons and empty Exported folders.</summary>
 public sealed record ImportPlan(IReadOnlyList<CopyItem> Items, IReadOnlyList<string> FoldersToCreate)
 {
     public int FileCount => Items.Count;
@@ -35,52 +51,61 @@ public sealed record ImportPlan(IReadOnlyList<CopyItem> Items, IReadOnlyList<str
 }
 
 /// <summary>
-/// The folder structure (PORTING.md §2):
+/// Where a project's files go (PORTING.md §2). The standard structure:
 /// <code>
 /// &lt;root&gt;\2026\Photo\11 November\02.11.2026 Ana Wedding\&lt;Camera&gt;\IMG_0001.CR3
 /// &lt;root&gt;\2026\Video\11 November\02.11.2026 Ana Wedding\Media\&lt;Camera&gt;\C0001.MP4  (+ Project, Assets, Export)
 /// </code>
+/// Each project follows its own <see cref="ProjectInfo.Layout"/> (see <see cref="FolderStructure"/>).
 /// </summary>
 public static class ProjectLayout
 {
-    public static readonly IReadOnlyList<string> VideoSubfolders = ["Media", "Project", "Assets", "Export"];
-
-    private static readonly string[] MonthNames =
-    [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ];
+    public static IReadOnlyList<string> VideoSubfolders => FolderStructure.Standard.VideoFolders;
 
     /// <summary>"11 November" (English names on purpose, so every computer produces the same folders).</summary>
-    public static string MonthFolderName(ShootDay day)
-    {
-        var month = Math.Clamp(day.Month, 1, 12);
-        return $"{day.Month:00} {MonthNames[month - 1]}";
-    }
+    public static string MonthFolderName(ShootDay day) => FolderStructure.MonthFolderName(day);
 
     /// <summary>"02.11.2026 Ana Wedding"</summary>
-    public static string ProjectFolderName(string name, ShootDay startDay) =>
-        $"{startDay.FolderDate} {NameRules.SanitizedFolderName(name, "Untitled")}";
+    public static string ProjectFolderName(string name, ShootDay startDay) => FolderStructure.ProjectFolderName(name, startDay);
 
-    public static IReadOnlyList<string> RelativePhotoFolder(ProjectInfo project) => RelativeFolder(project, "Photo");
-    public static IReadOnlyList<string> RelativeVideoFolder(ProjectInfo project) => RelativeFolder(project, "Video");
+    /// <summary>The photo folder relative to the projects folder: ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"].</summary>
+    public static IReadOnlyList<string> RelativePhotoFolder(ProjectInfo project) =>
+        project.Layout.FilesPath(FolderStructure.Branch.Photo, project.Name, project.StartDay);
 
-    public static string PhotoFolder(ProjectInfo project) => Path.Combine([project.RootPath, .. RelativePhotoFolder(project)]);
-    public static string VideoFolder(ProjectInfo project) => Path.Combine([project.RootPath, .. RelativeVideoFolder(project)]);
+    /// <summary>["2026", "Video", "11 November", "02.11.2026 Ana Wedding"]</summary>
+    public static IReadOnlyList<string> RelativeVideoFolder(ProjectInfo project) =>
+        project.Layout.FilesPath(FolderStructure.Branch.Video, project.Name, project.StartDay);
 
-    /// <summary>Photos go into the photo project folder; videos and audio into the video project's Media folder.</summary>
+    /// <summary>The folder holding the project's photo camera folders.</summary>
+    public static string PhotoFolder(ProjectInfo project) => Under(project, RelativePhotoFolder(project));
+
+    /// <summary>The folder holding the project's video folders (Media, Project, …).</summary>
+    public static string VideoFolder(ProjectInfo project) => Under(project, RelativeVideoFolder(project));
+
+    /// <summary>
+    /// Photos go into the photo project folder; videos and audio into the video project's media folder. Both get a
+    /// folder per camera unless the structure turns them off.
+    /// </summary>
     public static string TargetDirectory(MediaKind kind, ProjectInfo project, string camera)
     {
-        var cameraFolder = NameRules.SanitizedFolderName(camera, "Camera");
-        return kind == MediaKind.Photo
-            ? Path.Combine(PhotoFolder(project), cameraFolder)
-            : Path.Combine(VideoFolder(project), "Media", cameraFolder);
+        var layout = project.Layout;
+        var directory = kind == MediaKind.Photo ? PhotoFolder(project) : VideoFolder(project);
+        if (kind != MediaKind.Photo && layout.MediaFolder.Length > 0)
+        {
+            directory = Path.Combine(directory, FolderStructure.Safe(layout.MediaFolder, "Media"));
+        }
+        return layout.CameraFolders ? Path.Combine(directory, NameRules.SanitizedFolderName(camera, "Camera")) : directory;
     }
 
-    /// <summary>Builds the copy list. Days without a project (skipped) are left out; sidecars go with their file.</summary>
+    /// <summary>
+    /// Builds the copy list. Days without a project (skipped) are left out; sidecars go with their file. Projects
+    /// receiving videos get their video folders; with an Unedited / Exported split, projects also get their empty
+    /// Exported folder.
+    /// </summary>
     public static ImportPlan Plan(IEnumerable<MediaItem> items, IReadOnlyDictionary<ShootDay, ProjectInfo> projects, Func<MediaItem, string> cameraName)
     {
         var copies = new List<CopyItem>();
+        var photoProjects = new Dictionary<Guid, ProjectInfo>();
         var videoProjects = new Dictionary<Guid, ProjectInfo>();
         foreach (var item in items)
         {
@@ -88,17 +113,23 @@ public static class ProjectLayout
             var directory = TargetDirectory(item.Kind, project, cameraName(item));
             copies.Add(new CopyItem(item.File, directory));
             copies.AddRange(item.Sidecars.Select(s => new CopyItem(s, directory)));
-            if (item.Kind != MediaKind.Photo) videoProjects[project.Id] = project;
+            if (item.Kind == MediaKind.Photo) photoProjects[project.Id] = project;
+            else videoProjects[project.Id] = project;
         }
-        var folders = videoProjects.Values
-            .SelectMany(p => VideoSubfolders.Select(sub => Path.Combine(VideoFolder(p), sub)))
-            .OrderBy(f => f, StringComparer.Ordinal)
-            .ToList();
-        return new ImportPlan(copies, folders);
+        var folders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in videoProjects.Values)
+        {
+            foreach (var name in project.Layout.VideoFolders) folders.Add(Path.Combine(VideoFolder(project), FolderStructure.Safe(name, "Folder")));
+            if (project.Layout.ExportedPath(FolderStructure.Branch.Video, project.Name, project.StartDay) is { } exported) folders.Add(Under(project, exported));
+        }
+        foreach (var project in photoProjects.Values)
+        {
+            if (project.Layout.ExportedPath(FolderStructure.Branch.Photo, project.Name, project.StartDay) is { } exported) folders.Add(Under(project, exported));
+        }
+        return new ImportPlan(copies, folders.OrderBy(f => f, StringComparer.Ordinal).ToList());
     }
 
-    private static string[] RelativeFolder(ProjectInfo project, string branch) =>
-        [project.StartDay.Year.ToString("0000", CultureInfo.InvariantCulture), branch, MonthFolderName(project.StartDay), project.FolderName];
+    private static string Under(ProjectInfo project, IReadOnlyList<string> components) => Path.Combine([project.RootPath, .. components]);
 }
 
 /// <summary>

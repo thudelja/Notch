@@ -3,8 +3,9 @@ import Foundation
 /// A shoot that cards are imported into.
 ///
 /// Saved records contain no absolute paths: a project names the projects folder ("library") it
-/// lives in by ID, and its folders are derived from its name and start day (see `ProjectLayout`).
-/// That keeps records valid when a drive is mounted under another name, or read on another OS.
+/// lives in by ID, and its folders are derived from its name, start day and folder structure (see
+/// `ProjectLayout`). That keeps records valid when a drive is mounted under another name, or read on
+/// another OS.
 public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public var name: String
@@ -13,12 +14,16 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     /// The projects folder this project lives in (its `.sdbackup/library.json` ID).
     public var libraryID: UUID
     public var lastUsed: Date
+    /// The folder structure the project was created with, or nil for the standard one (all projects
+    /// made before structures could be changed). Kept with the project so changing the projects
+    /// folder's structure never moves existing projects.
+    public var structure: FolderStructure?
     /// Where that projects folder is on this computer right now, or "" when its drive isn't
     /// connected. Filled in when loading; never saved.
     public var rootPath: String = ""
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, startDay, libraryID, lastUsed
+        case id, name, startDay, libraryID, lastUsed, structure
     }
 
     public init(
@@ -26,6 +31,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         name: String,
         startDay: ShootDay,
         libraryID: UUID = UUID(),
+        structure: FolderStructure? = nil,
         rootPath: String = "",
         lastUsed: Date = Date()
     ) {
@@ -33,12 +39,31 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         self.name = name
         self.startDay = startDay
         self.libraryID = libraryID
+        self.structure = structure == .standard ? nil : structure
         self.rootPath = rootPath
         self.lastUsed = lastUsed
     }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        startDay = try container.decode(ShootDay.self, forKey: .startDay)
+        libraryID = try container.decode(UUID.self, forKey: .libraryID)
+        lastUsed = try container.decode(Date.self, forKey: .lastUsed)
+        // A structure this version can't read, or a broken one, leaves the project on the standard one.
+        let structure = (try? container.decodeIfPresent(FolderStructure.self, forKey: .structure)) ?? nil
+        self.structure = structure?.isValid == true ? structure : nil
+    }
+
+    /// The structure the project's folders follow.
+    public var layout: FolderStructure {
+        if let structure, structure.isValid { return structure }
+        return .standard
+    }
+
     /// "02.11.2026 Ana Wedding"
-    public var folderName: String { ProjectLayout.projectFolderName(name: name, startDay: startDay) }
+    public var folderName: String { layout.projectFolderName(name: name, startDay: startDay) }
 
     /// The record as saved: without this computer's path.
     public var portable: ProjectInfo {
@@ -51,100 +76,118 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
 /// Everything needed to copy a card's files into their projects.
 public struct ImportPlan: Sendable {
     public let items: [CopyItem]
-    /// Video project skeletons: Media, Project, Assets, Export.
+    /// Video project skeletons (Media, Project, Assets, Export) and empty Exported folders.
     public let foldersToCreate: [URL]
 
     public var fileCount: Int { items.count }
     public var byteCount: Int64 { items.reduce(0) { $0 + $1.file.size } }
 }
 
-/// The folder structure:
+/// Where a project's files go. The standard structure:
 ///
 ///     <root>/2026/Photo/11 November/02.11.2026 Ana Wedding/<Camera>/IMG_0001.CR3
 ///     <root>/2026/Video/11 November/02.11.2026 Ana Wedding/Media/<Camera>/C0001.MP4
 ///                                                         /Project  /Assets  /Export
+///
+/// Each project follows its own `ProjectInfo.layout` (see `FolderStructure`).
 public enum ProjectLayout {
-    public static let videoSubfolders = ["Media", "Project", "Assets", "Export"]
-
-    static let monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ]
+    public static var videoSubfolders: [String] { FolderStructure.standard.videoFolders }
 
     /// "11 November"
     public static func monthFolderName(_ day: ShootDay) -> String {
-        let index = min(max(day.month, 1), 12) - 1
-        return "\(ShootDay.twoDigits(day.month)) \(monthNames[index])"
+        FolderStructure.monthFolderName(day)
     }
 
     /// "02.11.2026 Ana Wedding"
     public static func projectFolderName(name: String, startDay: ShootDay) -> String {
-        "\(startDay.folderDate) \(BackupEngine.sanitizedFolderName(name, fallback: "Untitled"))"
+        FolderStructure.projectFolderName(name: name, startDay: startDay)
     }
 
+    /// The folder holding the project's photo camera folders.
     public static func photoFolder(for project: ProjectInfo) -> URL {
-        projectFolder(project, branch: "Photo")
+        url(project, relativePhotoFolder(for: project))
     }
 
+    /// The folder holding the project's video folders (Media, Project, …).
     public static func videoFolder(for project: ProjectInfo) -> URL {
-        projectFolder(project, branch: "Video")
+        url(project, relativeVideoFolder(for: project))
     }
 
-    /// Photos go into the photo project folder; videos and audio into the video project's Media
-    /// folder. Both get a folder per camera.
+    /// Photos go into the photo project folder; videos and audio into the video project's media
+    /// folder. Both get a folder per camera unless the structure turns them off.
     public static func targetDirectory(kind: MediaKind, project: ProjectInfo, camera: String) -> URL {
-        let cameraFolder = BackupEngine.sanitizedFolderName(camera, fallback: "Camera")
+        let layout = project.layout
+        var directory: URL
         switch kind {
         case .photo:
-            return photoFolder(for: project).appendingPathComponent(cameraFolder, isDirectory: true)
+            directory = photoFolder(for: project)
         default:
-            return videoFolder(for: project)
-                .appendingPathComponent("Media", isDirectory: true)
-                .appendingPathComponent(cameraFolder, isDirectory: true)
+            directory = videoFolder(for: project)
+            if !layout.mediaFolder.isEmpty {
+                directory.appendPathComponent(FolderStructure.safe(layout.mediaFolder, fallback: "Media"), isDirectory: true)
+            }
         }
+        if layout.cameraFolders {
+            directory.appendPathComponent(BackupEngine.sanitizedFolderName(camera, fallback: "Camera"), isDirectory: true)
+        }
+        return directory
     }
 
     /// Builds the copy list. Items whose day has no project (skipped days) are left out. Sidecars
-    /// go into the same folder as their media file.
+    /// go into the same folder as their media file. Projects receiving videos get their video
+    /// folders; with an Unedited / Exported split, projects also get their empty Exported folder.
     public static func plan(
         items: [MediaItem],
         projects: [ShootDay: ProjectInfo],
         cameraName: (MediaItem) -> String
     ) -> ImportPlan {
         var copies: [CopyItem] = []
+        var photoProjects: [UUID: ProjectInfo] = [:]
         var videoProjects: [UUID: ProjectInfo] = [:]
         for item in items {
             guard let project = projects[item.day] else { continue }
             let directory = targetDirectory(kind: item.kind, project: project, camera: cameraName(item))
             copies.append(CopyItem(file: item.file, targetDirectory: directory))
             copies.append(contentsOf: item.sidecars.map { CopyItem(file: $0, targetDirectory: directory) })
-            if item.kind != .photo {
+            if item.kind == .photo {
+                photoProjects[project.id] = project
+            } else {
                 videoProjects[project.id] = project
             }
         }
-        let folders = videoProjects.values
-            .flatMap { project in videoSubfolders.map { videoFolder(for: project).appendingPathComponent($0, isDirectory: true) } }
-            .sorted { $0.path < $1.path }
-        return ImportPlan(items: copies, foldersToCreate: folders)
+        var folders: [String: URL] = [:]
+        for project in videoProjects.values {
+            for name in project.layout.videoFolders {
+                let folder = videoFolder(for: project).appendingPathComponent(FolderStructure.safe(name, fallback: "Folder"), isDirectory: true)
+                folders[folder.path] = folder
+            }
+            if let exported = project.layout.exportedPath(.video, name: project.name, startDay: project.startDay) {
+                let folder = url(project, exported)
+                folders[folder.path] = folder
+            }
+        }
+        for project in photoProjects.values {
+            if let exported = project.layout.exportedPath(.photo, name: project.name, startDay: project.startDay) {
+                let folder = url(project, exported)
+                folders[folder.path] = folder
+            }
+        }
+        return ImportPlan(items: copies, foldersToCreate: folders.values.sorted { $0.path < $1.path })
     }
 
     /// The photo folder relative to the projects folder, as path components:
     /// ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"]. The same on every OS.
     public static func relativePhotoFolder(for project: ProjectInfo) -> [String] {
-        relativeFolder(project, branch: "Photo")
+        project.layout.filesPath(.photo, name: project.name, startDay: project.startDay)
     }
 
     /// ["2026", "Video", "11 November", "02.11.2026 Ana Wedding"]
     public static func relativeVideoFolder(for project: ProjectInfo) -> [String] {
-        relativeFolder(project, branch: "Video")
+        project.layout.filesPath(.video, name: project.name, startDay: project.startDay)
     }
 
-    private static func relativeFolder(_ project: ProjectInfo, branch: String) -> [String] {
-        [String(project.startDay.year), branch, monthFolderName(project.startDay), project.folderName]
-    }
-
-    private static func projectFolder(_ project: ProjectInfo, branch: String) -> URL {
-        relativeFolder(project, branch: branch).reduce(URL(fileURLWithPath: project.rootPath, isDirectory: true)) {
+    private static func url(_ project: ProjectInfo, _ components: [String]) -> URL {
+        components.reduce(URL(fileURLWithPath: project.rootPath, isDirectory: true)) {
             $0.appendingPathComponent($1, isDirectory: true)
         }
     }

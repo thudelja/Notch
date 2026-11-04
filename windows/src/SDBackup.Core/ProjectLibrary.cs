@@ -17,10 +17,27 @@ public sealed record LibraryManifest
     [JsonPropertyName("libraryID")] public Guid LibraryId { get; init; } = Guid.NewGuid();
     [JsonPropertyName("projects")] public List<ProjectInfo> Projects { get; init; } = [];
 
-    public static LibraryManifest Create(Guid libraryId, IEnumerable<ProjectInfo> projects) => new()
+    /// <summary>
+    /// The folder structure new projects get, or null for the standard one. Older versions ignore it (and build the
+    /// standard structure); one this version can't read is read as null.
+    /// </summary>
+    [JsonPropertyName("structure"), JsonConverter(typeof(TolerantStructureConverter))]
+    public FolderStructure? Structure
+    {
+        get => _structure;
+        init => _structure = value is { IsStandard: true } ? null : value;
+    }
+
+    private readonly FolderStructure? _structure;
+
+    /// <summary>The structure new projects in this folder get.</summary>
+    [JsonIgnore] public FolderStructure Layout => Structure ?? FolderStructure.Standard;
+
+    public static LibraryManifest Create(Guid libraryId, IEnumerable<ProjectInfo> projects, FolderStructure? structure = null) => new()
     {
         LibraryId = libraryId,
         Projects = projects.Select(p => p.Portable with { LibraryId = libraryId }).ToList(),
+        Structure = structure,
     };
 
     public static string PathIn(string root) => Path.Combine(root, FolderName, FileName);

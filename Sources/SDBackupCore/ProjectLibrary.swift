@@ -14,12 +14,33 @@ public struct LibraryManifest: Codable, Sendable, Equatable {
     public var formatVersion: Int
     public let libraryID: UUID
     public var projects: [ProjectInfo]
+    /// The folder structure new projects get, or nil for the standard one. Older versions ignore it
+    /// (and build the standard structure).
+    public var structure: FolderStructure?
 
-    public init(libraryID: UUID = UUID(), projects: [ProjectInfo] = []) {
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion, libraryID, projects, structure
+    }
+
+    public init(libraryID: UUID = UUID(), projects: [ProjectInfo] = [], structure: FolderStructure? = nil) {
         self.formatVersion = Self.currentFormatVersion
         self.libraryID = libraryID
         self.projects = projects.map(\.portable)
+        self.structure = structure == .standard ? nil : structure
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        formatVersion = try container.decode(Int.self, forKey: .formatVersion)
+        libraryID = try container.decode(UUID.self, forKey: .libraryID)
+        projects = try container.decode([ProjectInfo].self, forKey: .projects)
+        // A structure this version can't read, or a broken one, means the standard structure.
+        let structure = (try? container.decodeIfPresent(FolderStructure.self, forKey: .structure)) ?? nil
+        self.structure = structure?.isValid == true ? structure : nil
+    }
+
+    /// The structure new projects in this folder get.
+    public var layout: FolderStructure { structure ?? .standard }
 
     public static func url(in root: URL) -> URL {
         root.appendingPathComponent(folderName, isDirectory: true).appendingPathComponent(fileName, isDirectory: false)
