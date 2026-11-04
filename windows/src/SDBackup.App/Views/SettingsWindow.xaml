@@ -103,6 +103,31 @@
                 </StackPanel>
             </Border>
 
+            <!-- ============================================================ After importing -->
+            <TextBlock Style="{StaticResource SectionTitle}" Text="After importing" />
+            <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+                <StackPanel>
+                    <DockPanel>
+                        <ComboBox DockPanel.Dock="Right" Style="{StaticResource PickerBox}" Width="190"
+                                  AutomationProperties.Name="Open new photos in"
+                                  ItemsSource="{Binding Settings.PhotoAppChoices}"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding Settings.PhotoApp, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Title}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Style="{StaticResource BodyText}" Text="Open new photos in" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,8,0,0" Text="{Binding Settings.PhotoAppExplanation}" />
+                    <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,6,0,0" Foreground="{DynamicResource WarningBrush}"
+                               Text="{Binding Settings.PhotoAppNote}"
+                               Visibility="{Binding Settings.PhotoAppNote, Converter={StaticResource TextToVisible}}" />
+                </StackPanel>
+            </Border>
+
             <!-- ============================================================ General -->
             <TextBlock Style="{StaticResource SectionTitle}" Text="General" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">

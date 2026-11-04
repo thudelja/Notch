@@ -78,11 +78,19 @@ internal static class SelfTest
                     report.Add($"Panel ({theme}): scrolls by {scroller.ScrollableHeight:0} in a {workArea.Height:0}-high work area");
                 }
 
+                model.Settings.PhotoApp = PhotoApp.LightroomClassic;
                 var settings = new SettingsWindow { DataContext = model };
                 settings.Show();
                 Settle();
                 Save(settings, Path.Combine(folder, $"settings-{theme}.png"));
                 report.Add($"Settings ({theme}): {settings.ActualWidth:0}×{settings.ActualHeight:0}");
+                // The lower sections (After importing, General, Memory) are below the fold.
+                if (Descendants<ScrollViewer>(settings).FirstOrDefault() is { ScrollableHeight: > 0 } settingsScroller)
+                {
+                    settingsScroller.ScrollToEnd();
+                    Settle();
+                    Save(settings, Path.Combine(folder, $"settings-{theme}-scrolled.png"));
+                }
 
                 flyout.Close();
                 settings.Close();

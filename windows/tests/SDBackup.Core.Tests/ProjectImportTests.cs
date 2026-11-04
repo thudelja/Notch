@@ -256,4 +256,33 @@ public sealed class ProjectImportTests : Sandbox
         Assert.Equal(["C0001.MP4", "C0001M01.XML"], plan.Items.Select(i => Path.GetFileName(i.File.FullPath)).Order(StringComparer.Ordinal).ToList());
         Assert.Equal(4, plan.FoldersToCreate.Count);
     }
+
+    [Fact]
+    public void PhotoHandoffListsOnlyFoldersWithNewPhotos()
+    {
+        WriteMixedCard();
+        var analysis = new CardAnalyzer(MixedCardReader()).Analyze(_card, _ => false);
+        var project = new ProjectInfo { Name = "Ana Wedding", StartDay = new ShootDay(2026, 11, 2), RootPath = _projects };
+        var plan = ProjectLayout.Plan(analysis.Items, analysis.Days.ToDictionary(d => d.Day, _ => project),
+            item => item.CameraModel is { } model ? CameraNames.ShortName(item.CameraMake, model) : "Zoom H5");
+        var engine = new BackupEngine(new BackupOptions(ReservedFreeSpace: 0));
+
+        // Only the photo camera folder: no video, audio or sidecar folders.
+        var first = engine.Copy(plan.Items, _card, _projects, plan.FoldersToCreate);
+        var photoFolder = Path.GetFullPath(PathUtil.Join(_projects, "2026/Photo/11 November/02.11.2026 Ana Wedding/R5"));
+        Assert.Equal(new[] { photoFolder }, PhotoHandoff.Folders(first));
+        Assert.Equal(1, PhotoHandoff.PhotoCount(first));
+
+        // The same card again copies nothing new, so there is nothing to hand over.
+        var second = engine.Copy(plan.Items, _card, _projects, plan.FoldersToCreate);
+        Assert.Empty(PhotoHandoff.Folders(second));
+        Assert.Equal(0, PhotoHandoff.PhotoCount(second));
+
+        // A day with only videos has no photos to hand over.
+        var videoDay = new ProjectInfo { Name = "Day Two", StartDay = new ShootDay(2026, 11, 3), RootPath = _projects };
+        var videoPlan = ProjectLayout.Plan(analysis.Items, new Dictionary<ShootDay, ProjectInfo> { [new ShootDay(2026, 11, 3)] = videoDay }, _ => "A7 IV");
+        var videos = engine.Copy(videoPlan.Items, _card, _projects, videoPlan.FoldersToCreate);
+        Assert.True(videos.FilesCopied > 0);
+        Assert.Empty(PhotoHandoff.Folders(videos));
+    }
 }

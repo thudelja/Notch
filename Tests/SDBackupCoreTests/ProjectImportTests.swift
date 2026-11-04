@@ -282,4 +282,36 @@ final class ProjectImportTests: XCTestCase {
         XCTAssertEqual(plan.items.map { ($0.file.relativePath as NSString).lastPathComponent }.sorted(), ["C0001.MP4", "C0001M01.XML"])
         XCTAssertEqual(plan.foldersToCreate.count, 4)
     }
+
+    func testPhotoHandoffListsOnlyFoldersWithNewPhotos() async throws {
+        try writeMixedCard()
+        let analysis = try await CardAnalyzer(reader: mixedCardReader).analyze(source: card, isAlreadyImported: { _ in false })
+        let project = ProjectInfo(name: "Ana Wedding", startDay: ShootDay(year: 2026, month: 11, day: 2), rootPath: root.path)
+        var projects: [ShootDay: ProjectInfo] = [:]
+        for summary in analysis.days {
+            projects[summary.day] = project
+        }
+        let plan = ProjectLayout.plan(items: analysis.items, projects: projects) { item in
+            item.cameraModel.map { CameraNames.shortName(make: item.cameraMake, model: $0) } ?? "Zoom H5"
+        }
+        let engine = BackupEngine(options: BackupOptions(reservedFreeSpace: 0))
+
+        // Only the photo camera folder: no video, audio or sidecar folders.
+        let first = try engine.copy(plan.items, from: card, to: root, createFolders: plan.foldersToCreate)
+        let photoFolder = root.appendingPathComponent("2026/Photo/11 November/02.11.2026 Ana Wedding/R5", isDirectory: true)
+        XCTAssertEqual(PhotoHandoff.folders(from: first).map(\.path), [photoFolder.standardizedFileURL.path])
+        XCTAssertEqual(PhotoHandoff.photoCount(in: first), 1)
+
+        // The same card again copies nothing new, so there is nothing to hand over.
+        let second = try engine.copy(plan.items, from: card, to: root, createFolders: plan.foldersToCreate)
+        XCTAssertTrue(PhotoHandoff.folders(from: second).isEmpty)
+        XCTAssertEqual(PhotoHandoff.photoCount(in: second), 0)
+
+        // A day with only videos has no photos to hand over.
+        let videoDay = ProjectInfo(name: "Day Two", startDay: ShootDay(year: 2026, month: 11, day: 3), rootPath: root.path)
+        let videoPlan = ProjectLayout.plan(items: analysis.items, projects: [ShootDay(year: 2026, month: 11, day: 3): videoDay]) { _ in "A7 IV" }
+        let videos = try engine.copy(videoPlan.items, from: card, to: root, createFolders: videoPlan.foldersToCreate)
+        XCTAssertGreaterThan(videos.filesCopied, 0)
+        XCTAssertTrue(PhotoHandoff.folders(from: videos).isEmpty)
+    }
 }

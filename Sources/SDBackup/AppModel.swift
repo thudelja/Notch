@@ -425,6 +425,7 @@ final class AppModel: ObservableObject {
         lines += job.projects.map { "    \($0.name): \(ProjectLayout.photoFolder(for: $0).path) | \(ProjectLayout.videoFolder(for: $0).path)" }
         lines += result.failures.prefix(500).map { "    FAILED \($0.relativePath): \($0.message)" }
         log.write(lines)
+        handOffPhotos(result)
 
         if result.isComplete {
             record(.completed, title: job.title, volume: job.volume, result: result, folder: job.primaryFolder)
@@ -440,6 +441,26 @@ final class AppModel: ObservableObject {
                 "Import finished with problems",
                 "Copied \(copied) into \(job.title), but \(Format.count(result.failures.count, "file")) couldn’t be copied. Open the log for details."
             )
+        }
+    }
+
+    /// Opens the folders that received new photos in the app chosen in Settings, which then shows
+    /// its own import window. Never affects the import itself.
+    private func handOffPhotos(_ result: BackupResult) {
+        let app = settings.photoApp
+        let folders = PhotoHandoff.folders(from: result)
+        guard app != .none, !folders.isEmpty else { return }
+        let photos = Format.count(PhotoHandoff.photoCount(in: result), "new photo")
+        Task { @MainActor in
+            switch await PhotoAppLauncher.open(folders, in: app) {
+            case .opened:
+                log.write("Opened \(photos) in \(app.title): " + folders.map(\.path).joined(separator: ", "))
+            case .notInstalled:
+                log.write("\(app.title) isn’t installed, so the \(photos) weren’t opened in it.")
+                notify("\(app.title) not found", "Notch couldn’t find \(app.title) on this Mac, so the new photos weren’t opened in it. You can choose another app in Settings.")
+            case .failed(let message):
+                log.write("Couldn’t open the \(photos) in \(app.title): \(message)")
+            }
         }
     }
 

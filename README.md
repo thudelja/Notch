@@ -190,6 +190,10 @@ ejected. If macOS says the disk is still in use, eject it again.
 - **Which cards count:** SD and camera cards, or any removable drive. External hard drives and
   SSDs are never included.
 - **Verify** and **eject**.
+- **Open new photos in Lightroom Classic or Lightroom** after an import (Settings › After
+  importing). The app opens its own import window with the photos from that import; videos
+  aren't sent. In Lightroom Classic, choose **Add** to keep the photos where Notch put them.
+  Lightroom copies them into its own library and syncs them to Adobe's cloud.
 - **Open at login** and **notifications**.
 - **Move a year to another drive** (see above).
 - **Forget Imported Files** offers every file on every card again. **Forget Camera Names**

@@ -79,6 +79,11 @@ The panel shows, from top to bottom:
 - **Cards:** connected cards, when each was last imported, and **Import** and **Eject** buttons.
 - **Recent:** the last imports. Click one to open its folder.
 
+In **Settings › After importing** you can have Notch open the new photos of every import in
+**Lightroom Classic** or **Lightroom**. The app opens its own import window with them (videos aren't
+sent). In Lightroom Classic, choose **Add** to keep the photos where Notch put them; Lightroom copies
+them into its own library and syncs them to Adobe's cloud.
+
 ### Sharing a drive with the Mac
 
 Format the SSD as **exFAT**. Windows can't read APFS, and macOS can't write NTFS. Each projects

@@ -506,6 +506,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         lines.AddRange(job.Projects.Select(p => $"    {p.Name}: {ProjectLayout.PhotoFolder(p)} | {ProjectLayout.VideoFolder(p)}"));
         lines.AddRange(result.Failures.Take(500).Select(f => $"    FAILED {f.RelativePath}: {f.Message}"));
         Log.Write(lines);
+        HandOffPhotos(result);
 
         if (result.IsComplete)
         {
@@ -519,6 +520,33 @@ public sealed class AppModel : ObservableObject, IDisposable
             Record(Outcome.CompletedWithErrors, job.Title, job.Volume, result, job.PrimaryFolder);
             Notify("Import finished with problems",
                 $"Copied {copied} into {job.Title}, but {Format.Count(result.Failures.Count, "file")} couldn’t be copied. Open the log for details.");
+        }
+    }
+
+    /// <summary>
+    /// Opens the folders that received new photos in the app chosen in Settings, which then shows its own
+    /// import window. Never affects the import itself.
+    /// </summary>
+    private void HandOffPhotos(BackupResult result)
+    {
+        var app = Settings.PhotoApp;
+        var folders = PhotoHandoff.Folders(result);
+        if (app == PhotoApp.None || folders.Count == 0) return;
+        var photos = Format.Count(PhotoHandoff.PhotoCount(result), "new photo");
+        var title = PhotoApps.Title(app);
+        var (outcome, error) = PhotoApps.Open(app, folders);
+        switch (outcome)
+        {
+            case PhotoAppOpenResult.Opened:
+                Log.Write($"Opened {photos} in {title}: {string.Join(", ", folders)}");
+                break;
+            case PhotoAppOpenResult.NotInstalled:
+                Log.Write($"{title} isn’t installed, so the {photos} weren’t opened in it.");
+                Notify($"{title} not found", $"Notch couldn’t find {title} on this PC, so the new photos weren’t opened in it. You can choose another app in Settings.");
+                break;
+            default:
+                Log.Write($"Couldn’t open the {photos} in {title}: {error}");
+                break;
         }
     }
 

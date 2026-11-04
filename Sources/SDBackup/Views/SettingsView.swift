@@ -74,6 +74,23 @@ struct SettingsView: View {
                 Toggle("Eject the card when the import finishes", isOn: $settings.ejectWhenDone)
             }
 
+            Section("After importing") {
+                Picker("Open new photos in", selection: $settings.photoApp) {
+                    ForEach(PhotoApp.allCases) { app in
+                        Text(app.title).tag(app)
+                    }
+                }
+                Text(settings.photoApp.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if settings.photoApp != .none, PhotoAppLauncher.applicationURL(for: settings.photoApp) == nil {
+                    Label("\(settings.photoApp.title) isn’t installed on this Mac.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
+
             Section("General") {
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                 Toggle("Show notifications", isOn: $settings.notificationsEnabled)

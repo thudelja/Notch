@@ -33,6 +33,7 @@ final class AppSettings: ObservableObject {
         static let verify = "verifyCopies"
         static let eject = "ejectWhenDone"
         static let notifications = "notificationsEnabled"
+        static let photoApp = "photoApp"
         static let lastMigration = "lastMigrationPath"
     }
 
@@ -56,6 +57,10 @@ final class AppSettings: ObservableObject {
     @Published var notificationsEnabled: Bool {
         didSet { defaults.set(notificationsEnabled, forKey: Key.notifications) }
     }
+    /// The app new photos are opened in after an import.
+    @Published var photoApp: PhotoApp {
+        didSet { defaults.set(photoApp.rawValue, forKey: Key.photoApp) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         let defaultDestination = FileManager.default.homeDirectoryForCurrentUser
@@ -67,6 +72,7 @@ final class AppSettings: ObservableObject {
             Key.verify: true,
             Key.eject: false,
             Key.notifications: true,
+            Key.photoApp: PhotoApp.none.rawValue,
         ])
 
         self.defaults = defaults
@@ -76,6 +82,7 @@ final class AppSettings: ObservableObject {
         verifyCopies = defaults.bool(forKey: Key.verify)
         ejectWhenDone = defaults.bool(forKey: Key.eject)
         notificationsEnabled = defaults.bool(forKey: Key.notifications)
+        photoApp = PhotoApp(rawValue: defaults.string(forKey: Key.photoApp) ?? "") ?? .none
     }
 
     /// The folder a year was last moved to, offered first next time.

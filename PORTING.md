@@ -188,6 +188,15 @@ per card for files without camera info.
    drive are imported there, and the import is refused if that drive isn't connected.
 7. **Record:** every file that is now safely in place (copied, or an identical copy was already
    there) is added to the card's import record. Projects are marked as used (recent list).
+8. **Hand off** (optional, Settings › After importing: *Lightroom Classic* or *Lightroom*; default
+   none). If the import copied at least one new **photo** (complete or with problems), open the
+   distinct folders those photos went to in the chosen app (`PhotoHandoff.folders`), which shows its
+   own import window with them. Videos, audio, sidecars and files that were already there are left
+   out. Mac: `NSWorkspace.open(_:withApplicationAt:)`; an app that isn't running is launched first
+   and given time to finish (Lightroom Classic 15 ignores files received while launching). Windows:
+   the app's `Lightroom.exe` (found under `Program Files\Adobe\Adobe Lightroom Classic*` or
+   `…\Adobe Lightroom CC`) started with one folder per argument. The hand-off never changes the
+   import's outcome: it is logged, and the user is notified only when the app isn't installed.
 
 Only one import copies at a time; others queue. Imports wait while a year is being moved.
 
@@ -283,7 +292,7 @@ These hold paths or IDs that only make sense on one computer. They are not share
 | Where projects folders are | `~/Library/Application Support/SD Backup/libraries.json` | `[{libraryID, lastKnownPath, pathOnVolume, volumeName, markerPending?}]` |
 | Project cache | `…/SD Backup/projects.json` | `{"formatVersion": 2, "projects": [...]}`, same project objects as 7.1 |
 | Import records | `…/SD Backup/Imports/<card ID>.json` | section 7.3 |
-| Settings, camera names, history | UserDefaults (`destinationPath`, `autoBackupEnabled`, `cardDetection`, `verifyCopies`, `ejectWhenDone`, `notificationsEnabled`, `lastMigrationPath`, `cameraModelAliases`, `cameraCardAliases`, `importHistory`) | |
+| Settings, camera names, history | UserDefaults (`destinationPath`, `autoBackupEnabled`, `cardDetection`, `verifyCopies`, `ejectWhenDone`, `notificationsEnabled`, `photoApp`, `lastMigrationPath`, `cameraModelAliases`, `cameraCardAliases`, `importHistory`) | |
 | Log | `~/Library/Logs/SD Backup/backups.log` | plain text |
 
 The Mac folders keep the app's earlier name, SD Backup, so existing data carries over. The Windows version uses `%APPDATA%\Notch\` for the files and `%LOCALAPPDATA%\Notch\Logs\` for the log.

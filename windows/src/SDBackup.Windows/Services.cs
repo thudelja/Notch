@@ -121,6 +121,7 @@ public sealed class AppSettings : ObservableObject
         public bool EjectWhenDone { get; init; }
         public bool NotificationsEnabled { get; init; } = true;
         public string? LastMigrationPath { get; init; }
+        [JsonConverter(typeof(JsonStringEnumConverter))] public PhotoApp PhotoApp { get; init; } = PhotoApp.None;
     }
 
     private readonly string? _file;
@@ -131,6 +132,7 @@ public sealed class AppSettings : ObservableObject
     private bool _ejectWhenDone;
     private bool _notificationsEnabled;
     private string? _lastMigrationPath;
+    private PhotoApp _photoApp;
 
     /// <param name="file">Null keeps settings in memory only (used by the self-test).</param>
     public AppSettings(string? file)
@@ -144,6 +146,7 @@ public sealed class AppSettings : ObservableObject
         _ejectWhenDone = stored.EjectWhenDone;
         _notificationsEnabled = stored.NotificationsEnabled;
         _lastMigrationPath = stored.LastMigrationPath;
+        _photoApp = stored.PhotoApp;
     }
 
     public string ProjectsFolder { get => _projectsFolder; set => Set(ref _projectsFolder, value); }
@@ -153,6 +156,18 @@ public sealed class AppSettings : ObservableObject
     public bool EjectWhenDone { get => _ejectWhenDone; set => Set(ref _ejectWhenDone, value); }
     public bool NotificationsEnabled { get => _notificationsEnabled; set => Set(ref _notificationsEnabled, value); }
     public string? LastMigrationPath { get => _lastMigrationPath; set => Set(ref _lastMigrationPath, value); }
+
+    /// <summary>The app new photos are opened in after an import.</summary>
+    public PhotoApp PhotoApp { get => _photoApp; set => Set(ref _photoApp, value); }
+
+    public IReadOnlyList<PhotoAppChoice> PhotoAppChoices => PhotoApps.Choices;
+
+    public string PhotoAppExplanation => PhotoApps.Explanation(PhotoApp);
+
+    /// <summary>Empty unless the chosen app can't be found.</summary>
+    public string PhotoAppNote => PhotoApp != PhotoApp.None && PhotoApps.FindExecutable(PhotoApp) is null
+        ? $"{PhotoApps.Title(PhotoApp)} isn’t installed on this PC."
+        : "";
 
     public bool DetectAnyRemovable
     {
@@ -172,6 +187,11 @@ public sealed class AppSettings : ObservableObject
             OnPropertyChanged(nameof(DetectAnyRemovable));
             OnPropertyChanged(nameof(DetectionExplanation));
         }
+        if (name == nameof(PhotoApp))
+        {
+            OnPropertyChanged(nameof(PhotoAppExplanation));
+            OnPropertyChanged(nameof(PhotoAppNote));
+        }
         Save();
     }
 
@@ -189,6 +209,7 @@ public sealed class AppSettings : ObservableObject
                 EjectWhenDone = _ejectWhenDone,
                 NotificationsEnabled = _notificationsEnabled,
                 LastMigrationPath = _lastMigrationPath,
+                PhotoApp = _photoApp,
             });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
