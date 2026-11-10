@@ -109,7 +109,7 @@ public sealed class ImportDraftViewModel : ObservableObject
         var keys = analysis.CameraModels.Concat(analysis.HasUnknownCamera ? [""] : Array.Empty<string>());
         foreach (var key in keys)
         {
-            var row = new CameraRowViewModel(key, counts.GetValueOrDefault(key), cameraNames.GetValueOrDefault(key) ?? "Camera");
+            var row = new CameraRowViewModel(key, counts.GetValueOrDefault(key), cameraNames.GetValueOrDefault(key) ?? Loc.T("Camera"));
             row.PropertyChanged += (_, _) => Changed();
             Cameras.Add(row);
         }
@@ -132,7 +132,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     public RelayCommand ImportCommand { get; }
     public ICommand NotNowCommand { get; }
 
-    public string Title => $"Import “{Volume.Name}”";
+    public string Title => Loc.F("Import “{0}”", Volume.Name);
 
     public string Summary
     {
@@ -144,7 +144,7 @@ public sealed class ImportDraftViewModel : ObservableObject
                 Format.Count(Analysis.Items.Count, "new file"),
                 Format.Bytes(Analysis.TotalBytes),
             };
-            if (Analysis.AlreadyImported > 0) parts.Add($"{Analysis.AlreadyImported} imported before");
+            if (Analysis.AlreadyImported > 0) parts.Add(Loc.Plural(Analysis.AlreadyImported, "{0:N0} imported before", "{0:N0} imported before"));
             return string.Join(" · ", parts);
         }
     }
@@ -203,7 +203,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     internal string PlaceText(ShootDay day, FolderStructure.Branch branch)
     {
         var place = FolderFor(day, branch) is { } folder ? Format.FolderName(folder) : _services.DefaultPlaceName(branch);
-        return branch == FolderStructure.Branch.Photo ? $"Photos → {place}" : $"Videos → {place}";
+        return branch == FolderStructure.Branch.Photo ? Loc.F("Photos → {0}", place) : Loc.F("Videos → {0}", place);
     }
 
     public MultiDayShoot? Shoot(Guid id) => OpenShoots.FirstOrDefault(s => s.Id == id);
@@ -249,31 +249,33 @@ public sealed class ImportDraftViewModel : ObservableObject
     {
         var options = new List<(DayChoice Choice, string Title)>
         {
-            (DayChoice.Unassigned, "Choose a project…"),
-            (DayChoice.NewProject, "New project"),
+            (DayChoice.Unassigned, Loc.T("Choose a project…")),
+            (DayChoice.NewProject, Loc.T("New project")),
         };
-        foreach (var shoot in OpenShoots) options.Add((DayChoice.NewInShoot(shoot.Id), $"New in “{shoot.Name}”"));
-        options.Add((DayChoice.NewShoot, "New multi-day shoot…"));
+        foreach (var shoot in OpenShoots) options.Add((DayChoice.NewInShoot(shoot.Id), Loc.F("New in “{0}”", shoot.Name)));
+        options.Add((DayChoice.NewShoot, Loc.T("New multi-day shoot…")));
         foreach (var row in Days)
         {
             if (row.Day != day && ChoiceFor(row.Day).IsNewProject)
             {
-                options.Add((DayChoice.SameAs(row.Day), $"Same as {NewProjectTitle(row.Day)}"));
+                options.Add((DayChoice.SameAs(row.Day), SameAsTitle(row.Day)));
             }
         }
         foreach (var project in KnownProjects)
         {
-            var missing = IsOnConnectedDrive(project) ? "" : " (drive not connected)";
-            options.Add((DayChoice.Existing(project.Id), $"{project.Name} · {project.StartDay.FolderDate}{missing}"));
+            options.Add((DayChoice.Existing(project.Id), IsOnConnectedDrive(project)
+                ? $"{project.Name} · {project.StartDay.FolderDate}"
+                : Loc.F("{0} · {1} (drive not connected)", project.Name, project.StartDay.FolderDate)));
         }
-        options.Add((DayChoice.Skip, "Skip for now"));
+        options.Add((DayChoice.Skip, Loc.T("Skip for now")));
         return options;
     }
 
-    private string NewProjectTitle(ShootDay owner)
+    /// <summary>"Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.</summary>
+    private string SameAsTitle(ShootDay owner)
     {
         var name = NameFor(owner);
-        return name.Length == 0 ? $"the new project on {owner.FolderDate}" : $"“{name}” (new)";
+        return name.Length == 0 ? Loc.F("Same as the new project on {0}", owner.FolderDate) : Loc.F("Same as “{0}” (new)", name);
     }
 
     internal string NameFor(ShootDay day) => Days.FirstOrDefault(d => d.Day == day)?.ProjectName.Trim() ?? "";
@@ -301,27 +303,27 @@ public sealed class ImportDraftViewModel : ObservableObject
                 switch (choice.Kind)
                 {
                     case DayChoiceKind.Unassigned:
-                        return $"Choose a project for {row.Day.FolderDate}.";
+                        return Loc.F("Choose a project for {0}.", row.Day.FolderDate);
                     case DayChoiceKind.Skip:
                         continue;
                     case DayChoiceKind.NewShoot when row.ShootName.Trim().Length == 0:
-                        return $"Type a name for the multi-day shoot ({row.Day.FolderDate}).";
+                        return Loc.F("Type a name for the multi-day shoot ({0}).", row.Day.FolderDate);
                     case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot when NameFor(row.Day).Length == 0:
-                        return $"Type a name for the new project ({row.Day.FolderDate}).";
+                        return Loc.F("Type a name for the new project ({0}).", row.Day.FolderDate);
                     case DayChoiceKind.SameAs when choice.Owner is ShootDay owner
                                                 && (!ChoiceFor(owner).IsNewProject || NameFor(owner).Length == 0):
-                        return $"Type a name for the new project ({owner.FolderDate}).";
+                        return Loc.F("Type a name for the new project ({0}).", owner.FolderDate);
                     case DayChoiceKind.Existing:
                         var project = KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
                         if (project is not null && !IsAvailable(project, row.Summary))
                         {
-                            return $"“{project.Name}” is on a drive that isn’t connected. Connect it or choose another project.";
+                            return Loc.F("“{0}” is on a drive that isn’t connected. Connect it or choose another project.", project.Name);
                         }
                         break;
                 }
                 importsSomething = true;
             }
-            return importsSomething ? null : "Every date is skipped.";
+            return importsSomething ? null : Loc.T("Every date is skipped.");
         }
     }
 
@@ -382,7 +384,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     public string CameraNameFor(MediaItem item)
     {
         var name = Cameras.FirstOrDefault(c => c.Key == (item.CameraModel ?? ""))?.Name.Trim() ?? "";
-        return name.Length == 0 ? "Camera" : name;
+        return name.Length == 0 ? Loc.T("Camera") : name;
     }
 }
 
@@ -417,7 +419,7 @@ public sealed class DayRowViewModel : ObservableObject
             var parts = new List<string>();
             if (Summary.Photos > 0) parts.Add(Format.Count(Summary.Photos, "photo"));
             if (Summary.Videos > 0) parts.Add(Format.Count(Summary.Videos, "video"));
-            if (Summary.Audio > 0) parts.Add($"{Summary.Audio} audio");
+            if (Summary.Audio > 0) parts.Add(Format.Count(Summary.Audio, "audio", "audio"));
             parts.Add(Format.Bytes(Summary.Bytes));
             return string.Join(" · ", parts);
         }
@@ -470,8 +472,8 @@ public sealed class DayRowViewModel : ObservableObject
 
     private MultiDayShoot? ChosenShoot => _owner.ChoiceFor(Day) is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } ? _owner.Shoot(id) : null;
 
-    public string FinishShootTitle => ChosenShoot is { } shoot ? $"Hold to finish “{shoot.Name}”" : "";
-    public string ShootFinishedText => ChosenShoot is { } shoot ? $"“{shoot.Name}” is finished after this import" : "";
+    public string FinishShootTitle => ChosenShoot is { } shoot ? Loc.F("Hold to finish “{0}”", shoot.Name) : "";
+    public string ShootFinishedText => ChosenShoot is { } shoot ? Loc.F("“{0}” is finished after this import", shoot.Name) : "";
 
     /// <summary>The chosen shoot was finished in this panel (it still takes this import).</summary>
     public bool ShootFinished => ChosenShoot is { } shoot && _owner.IsFinished(shoot.Id);
@@ -540,7 +542,7 @@ public sealed class CameraRowViewModel(string key, int fileCount, string name) :
 
     /// <summary>The camera model, or "" for files without camera information.</summary>
     public string Key { get; } = key;
-    public string Label => Key.Length == 0 ? "No camera info" : Key;
+    public string Label => Key.Length == 0 ? Loc.T("No camera info") : Key;
     public string CountText => Format.Count(fileCount, "file");
 
     public string Name
@@ -601,9 +603,9 @@ public sealed class StatusViewModel(TaskKind kind, string title, string subtitle
             Line1Right = Line2Left = Line2Right = CurrentFile = "";
             return;
         }
-        Line1Left = $"{Format.Bytes(progress.BytesProcessed)} of {Format.Bytes(progress.BytesToCopy)}";
-        Line1Right = TimeLeft(progress) is TimeSpan left ? $"{Format.Duration(left)} left" : "";
-        Line2Left = $"{progress.FilesProcessed:N0} of {Format.Count(progress.FilesToCopy, "file")}";
+        Line1Left = Loc.F("{0} of {1}", Format.Bytes(progress.BytesProcessed), Format.Bytes(progress.BytesToCopy));
+        Line1Right = TimeLeft(progress) is TimeSpan left ? Loc.F("{0} left", Format.Duration(left)) : "";
+        Line2Left = Loc.Plural(progress.FilesToCopy, "{1:N0} of {0:N0} file", "{1:N0} of {0:N0} files", progress.FilesProcessed);
         Line2Right = $"{Math.Round(progress.FractionCompleted * 100):0}%";
         CurrentFile = progress.CurrentFile ?? "";
     }
@@ -658,10 +660,10 @@ public sealed class CardViewModel(VolumeInfo volume, ICommand import, ICommand e
 
     public string StatusText => Status switch
     {
-        CardStatus.Reading => "Reading…",
-        CardStatus.NeedsProject => "Choose project",
-        CardStatus.Queued => "Queued",
-        CardStatus.Importing => "Importing",
+        CardStatus.Reading => Loc.T("Reading…"),
+        CardStatus.NeedsProject => Loc.T("Choose project"),
+        CardStatus.Queued => Loc.T("Queued"),
+        CardStatus.Importing => Loc.T("Importing"),
         _ => "",
     };
 
@@ -706,13 +708,17 @@ public sealed record HistoryEntry
     [JsonIgnore]
     public string Summary => (Kind, Outcome) switch
     {
-        (HistoryKind.Migration, Outcome.Completed) => $"{Format.Count(FilesCopied, "file")} · {Format.Bytes(BytesCopied)} · to {CardName}",
-        (HistoryKind.Migration, Outcome.CompletedWithErrors) => $"{Format.Count(FilesCopied, "file")} moved to {CardName} · {FailedFiles} stayed on this PC",
-        (HistoryKind.Migration, _) => Message ?? "Move stopped",
-        (_, Outcome.Completed) when FilesCopied == 0 => $"Already there · from {CardName}",
-        (_, Outcome.Completed) => $"{Format.Count(FilesCopied, "file")} · {Format.Bytes(BytesCopied)} · from {CardName}",
-        (_, Outcome.CompletedWithErrors) => $"{Format.Count(FilesCopied, "file")} copied · {FailedFiles} couldn’t be copied",
-        _ => Message ?? "Import stopped",
+        (HistoryKind.Migration, Outcome.Completed) => Loc.F("{0} · {1} · to {2}", Format.Count(FilesCopied, "file"), Format.Bytes(BytesCopied), CardName),
+        (HistoryKind.Migration, Outcome.CompletedWithErrors) =>
+            Loc.Plural(FilesCopied, "{0:N0} file moved to {1}", "{0:N0} files moved to {1}", CardName) + " · "
+            + Loc.Plural(FailedFiles, "{0:N0} stayed on this PC", "{0:N0} stayed on this PC"),
+        (HistoryKind.Migration, _) => Message ?? Loc.T("Move stopped"),
+        (_, Outcome.Completed) when FilesCopied == 0 => Loc.F("Already there · from {0}", CardName),
+        (_, Outcome.Completed) => Loc.F("{0} · {1} · from {2}", Format.Count(FilesCopied, "file"), Format.Bytes(BytesCopied), CardName),
+        (_, Outcome.CompletedWithErrors) =>
+            Loc.Plural(FilesCopied, "{0:N0} file copied", "{0:N0} files copied") + " · "
+            + Loc.Plural(FailedFiles, "{0:N0} couldn’t be copied", "{0:N0} couldn’t be copied"),
+        _ => Message ?? Loc.T("Import stopped"),
     };
 }
 
@@ -733,13 +739,11 @@ public static class Relative
     public static string Format(DateTime utc)
     {
         var span = DateTime.UtcNow - utc;
-        if (span < TimeSpan.FromMinutes(1)) return "just now";
-        if (span < TimeSpan.FromHours(1)) return Plural((int)span.TotalMinutes, "minute");
-        if (span < TimeSpan.FromDays(1)) return Plural((int)span.TotalHours, "hour");
-        if (span < TimeSpan.FromDays(2)) return "yesterday";
-        if (span < TimeSpan.FromDays(7)) return Plural((int)span.TotalDays, "day");
+        if (span < TimeSpan.FromMinutes(1)) return Loc.T("just now");
+        if (span < TimeSpan.FromHours(1)) return Loc.Plural((int)span.TotalMinutes, "{0} minute ago", "{0} minutes ago");
+        if (span < TimeSpan.FromDays(1)) return Loc.Plural((int)span.TotalHours, "{0} hour ago", "{0} hours ago");
+        if (span < TimeSpan.FromDays(2)) return Loc.T("yesterday");
+        if (span < TimeSpan.FromDays(7)) return Loc.Plural((int)span.TotalDays, "{0} day ago", "{0} days ago");
         return utc.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture);
-
-        static string Plural(int n, string unit) => $"{n} {unit}{(n == 1 ? "" : "s")} ago";
     }
 }

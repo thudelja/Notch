@@ -69,7 +69,7 @@ public sealed class FolderStructuresEditor : ObservableObject
             var photo = Photos.Structure.Levels.FirstOrDefault(l => l.Kind == FolderLevel.LevelKind.MediaType)?.Photo;
             var video = Videos.Structure.Levels.FirstOrDefault(l => l.Kind == FolderLevel.LevelKind.MediaType)?.Video;
             return photo is not null && video is not null && string.Equals(photo.Trim(), video.Trim(), StringComparison.OrdinalIgnoreCase)
-                ? "Photos and videos go to the same folder, so their Photo and Video folders need different names."
+                ? Loc.T("Photos and videos go to the same folder, so their Photo and Video folders need different names.")
                 : null;
         }
     }
@@ -116,10 +116,10 @@ public sealed class FolderStructureEditor : ObservableObject
         _changed = changed;
         Branch = branch;
         SeparateFolders = separateFolders;
-        AddMediaTypeCommand = new RelayCommand(() => Add(FolderLevel.MediaTypeLevel()), () => !Has(FolderLevel.LevelKind.MediaType));
-        AddMonthCommand = new RelayCommand(() => Add(FolderLevel.MonthLevel()), () => !Has(FolderLevel.LevelKind.Month));
-        AddFolderCommand = new RelayCommand(() => Add(FolderLevel.TextLevel("Folder")));
-        AddSplitCommand = new RelayCommand(() => Add(FolderLevel.SplitLevel()), () => !Has(FolderLevel.LevelKind.Split));
+        AddMediaTypeCommand = new RelayCommand(() => Add(FolderLevel.NewMediaTypeLevel()), () => !Has(FolderLevel.LevelKind.MediaType));
+        AddMonthCommand = new RelayCommand(() => Add(FolderLevel.NewMonthLevel()), () => !Has(FolderLevel.LevelKind.Month));
+        AddFolderCommand = new RelayCommand(() => Add(FolderLevel.NewTextLevel()));
+        AddSplitCommand = new RelayCommand(() => Add(FolderLevel.NewSplitLevel()), () => !Has(FolderLevel.LevelKind.Split));
         AddVideoFolderCommand = new RelayCommand(() => AddVideoFolder(""));
         ResetCommand = new RelayCommand(() => Load(StandardStructure), () => !Structure.Equals(StandardStructure));
         Load(structure);
@@ -129,13 +129,15 @@ public sealed class FolderStructureEditor : ObservableObject
     public bool IsPhotos => Branch == FolderStructure.Branch.Photo;
     public bool IsVideos => Branch == FolderStructure.Branch.Video;
     public bool SeparateFolders { get; }
-    public string AddMediaTypeLabel => IsPhotos ? "+ Photo folder" : "+ Video folder";
-    public string ResetLabel => IsPhotos ? "Reset photos to standard" : "Reset videos to standard";
+    public string AddMediaTypeLabel => IsPhotos ? Loc.T("+ Photo folder") : Loc.T("+ Video folder");
+    public string ResetLabel => IsPhotos ? Loc.T("Reset photos to standard") : Loc.T("Reset videos to standard");
     public string FooterText => IsPhotos
-        ? "New projects’ photos get this structure. Existing projects keep their folders."
-        : "New projects’ videos get this structure. Existing projects keep their folders.";
+        ? Loc.T("New projects’ photos get this structure. Existing projects keep their folders.")
+        : Loc.T("New projects’ videos get this structure. Existing projects keep their folders.");
 
-    private FolderStructure StandardStructure => SeparateFolders ? FolderStructure.Standard.WithoutMediaType : FolderStructure.Standard;
+    /// <summary>"Reset to standard": the standard structure, with folder names in Notch's language.</summary>
+    private FolderStructure StandardStructure =>
+        SeparateFolders ? FolderStructure.DefaultFor(Loc.Language).WithoutMediaType : FolderStructure.DefaultFor(Loc.Language);
 
     public ObservableCollection<FolderLevelViewModel> Levels { get; } = [];
     public ObservableCollection<VideoFolderViewModel> VideoFolders { get; } = [];
@@ -181,9 +183,9 @@ public sealed class FolderStructureEditor : ObservableObject
         get
         {
             var shown = Shown;
-            var examples = new List<FolderExample> { new(IsPhotos ? "A photo" : "A video", string.Join("\\", shown.ExamplePath(Branch))) };
-            if (shown.ExampleExports(Branch) is { } exports) examples.Add(new("Exports", string.Join("\\", exports) + "\\"));
-            examples.Add(new("In a multi-day shoot", string.Join("\\", shown.ExamplePath(Branch, "AMD Koledar 2026"))));
+            var examples = new List<FolderExample> { new(IsPhotos ? Loc.T("A photo") : Loc.T("A video"), string.Join("\\", shown.ExamplePath(Branch))) };
+            if (shown.ExampleExports(Branch) is { } exports) examples.Add(new(Loc.T("Exports"), string.Join("\\", exports) + "\\"));
+            examples.Add(new(Loc.T("In a multi-day shoot"), string.Join("\\", shown.ExamplePath(Branch, "AMD Koledar 2026"))));
             return examples;
         }
     }
@@ -290,15 +292,15 @@ public sealed class FolderLevelViewModel : ObservableObject
 {
     private static readonly IReadOnlyList<EnumChoice<FolderLevel.MonthStyles>> s_monthStyles =
     [
-        new(FolderLevel.MonthStyles.NumberAndName, "11 November"),
+        new(FolderLevel.MonthStyles.NumberAndName, Loc.T("11 November")),
         new(FolderLevel.MonthStyles.Number, "11"),
-        new(FolderLevel.MonthStyles.Name, "November"),
+        new(FolderLevel.MonthStyles.Name, Loc.T("November")),
     ];
 
     private static readonly IReadOnlyList<EnumChoice<FolderLevel.MonthLanguages>> s_monthLanguages =
     [
-        new(FolderLevel.MonthLanguages.English, "English names"),
-        new(FolderLevel.MonthLanguages.Slovenian, "Slovenian names"),
+        new(FolderLevel.MonthLanguages.English, Loc.T("English names")),
+        new(FolderLevel.MonthLanguages.Slovenian, Loc.T("Slovenian names")),
     ];
 
     private static readonly IReadOnlyList<EnumChoice<FolderLevel.DateFormats>> s_dateFormats =
@@ -310,8 +312,8 @@ public sealed class FolderLevelViewModel : ObservableObject
 
     private static readonly IReadOnlyList<EnumChoice<FolderLevel.NameOrders>> s_nameOrders =
     [
-        new(FolderLevel.NameOrders.DateFirst, "Date, then name"),
-        new(FolderLevel.NameOrders.NameFirst, "Name, then date"),
+        new(FolderLevel.NameOrders.DateFirst, Loc.T("Date, then name")),
+        new(FolderLevel.NameOrders.NameFirst, Loc.T("Name, then date")),
     ];
 
     private readonly FolderStructureEditor _editor;
@@ -331,11 +333,11 @@ public sealed class FolderLevelViewModel : ObservableObject
 
     public string Title => Kind switch
     {
-        FolderLevel.LevelKind.MediaType => _editor.IsPhotos ? "Photo folder" : "Video folder",
-        FolderLevel.LevelKind.Month => "Month",
-        FolderLevel.LevelKind.Text => "Folder",
-        FolderLevel.LevelKind.Split => "Unedited / Exported",
-        _ => "Project",
+        FolderLevel.LevelKind.MediaType => _editor.IsPhotos ? Loc.T("Photo folder") : Loc.T("Video folder"),
+        FolderLevel.LevelKind.Month => Loc.T("Month"),
+        FolderLevel.LevelKind.Text => Loc.T("Folder"),
+        FolderLevel.LevelKind.Split => Loc.T("Unedited / Exported"),
+        _ => Loc.T("Project"),
     };
 
     public bool IsMediaType => Kind == FolderLevel.LevelKind.MediaType;
@@ -345,8 +347,8 @@ public sealed class FolderLevelViewModel : ObservableObject
     public bool ShowsVideoName => IsMediaType && _editor.IsVideos;
 
     public string MediaTypeNote => _editor.SeparateFolders
-        ? "Left out: photos and videos go to different folders."
-        : "Keeps photos and videos apart in the same folder.";
+        ? Loc.T("Left out: photos and videos go to different folders.")
+        : Loc.T("Keeps photos and videos apart in the same folder.");
     public bool IsMonth => Kind == FolderLevel.LevelKind.Month;
     public bool IsText => Kind == FolderLevel.LevelKind.Text;
     public bool IsSplit => Kind == FolderLevel.LevelKind.Split;
@@ -354,7 +356,7 @@ public sealed class FolderLevelViewModel : ObservableObject
 
     /// <summary>Every structure has a project folder.</summary>
     public bool CanRemove => !IsProject;
-    public string RemoveToolTip => CanRemove ? "Remove this level" : "Every structure has a project folder";
+    public string RemoveToolTip => CanRemove ? Loc.T("Remove this level") : Loc.T("Every structure has a project folder");
 
     public string Photo { get => _level.Photo ?? ""; set => Update(_level with { Photo = value }); }
     public string Video { get => _level.Video ?? ""; set => Update(_level with { Video = value }); }
@@ -455,8 +457,8 @@ public sealed class MediaChoice : ObservableObject
 
     public string Title => Folder switch
     {
-        null => "The project folder",
-        { Name.Length: 0 } => "Untitled folder",
+        null => Loc.T("The project folder"),
+        { Name.Length: 0 } => Loc.T("Untitled folder"),
         var folder => folder.Name,
     };
 }

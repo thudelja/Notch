@@ -92,34 +92,34 @@ public sealed class BackupException : Exception
     }
 
     public static BackupException AccessDenied(string path) => new(BackupErrorKind.AccessDenied,
-        "Windows denied access to the card. Check that the card isn't locked and that no other app is using it.", path);
+        Loc.T("Windows denied access to the card. Check that the card isn’t locked and that no other app is using it."), path);
 
     public static BackupException SourceUnreadable(string path, string reason) => new(BackupErrorKind.SourceUnreadable,
-        $"Couldn’t read {path}: {reason}", path);
+        Loc.F("Couldn’t read {0}: {1}", path, reason), path);
 
     public static BackupException SourceDisappeared() => new(BackupErrorKind.SourceDisappeared,
-        "The card was removed before the backup finished.");
+        Loc.T("The card was removed before the backup finished."));
 
     public static BackupException DestinationUnavailable(string path) => new(BackupErrorKind.DestinationUnavailable,
-        $"The folder {path} isn’t available. If it’s on an external drive, connect the drive and try again.", path);
+        Loc.F("The folder {0} isn’t available. If it’s on an external drive, connect the drive and try again.", path), path);
 
     public static BackupException DestinationInsideSource() => new(BackupErrorKind.DestinationInsideSource,
-        "The destination is inside the folder being copied. Choose a folder on another drive.");
+        Loc.T("The destination is inside the folder being copied. Choose a folder on another drive."));
 
     public static BackupException DestinationIsSource() => new(BackupErrorKind.DestinationIsSource,
-        "The destination is the same folder as the source. Choose a folder on the other drive.");
+        Loc.T("The destination is the same folder as the source. Choose a folder on the other drive."));
 
     public static BackupException InsufficientSpace(long needed, long available) => new(BackupErrorKind.InsufficientSpace,
-        $"Not enough free space: {Format.Bytes(needed)} needed, {Format.Bytes(available)} available.");
+        Loc.F("Not enough free space: {0} needed, {1} available.", Format.Bytes(needed), Format.Bytes(available)));
 
     public static BackupException SizeMismatch(long expected, long actual) => new(BackupErrorKind.SizeMismatch,
-        $"The file changed while it was being copied (expected {expected} bytes, read {actual}).");
+        Loc.F("The file changed while it was being copied (expected {0} bytes, read {1}).", expected, actual));
 
     public static BackupException VerificationFailed() => new(BackupErrorKind.VerificationFailed,
-        "The copy didn’t match the original when it was verified.");
+        Loc.T("The copy didn’t match the original when it was verified."));
 
     public static BackupException TooManyNameCollisions() => new(BackupErrorKind.TooManyNameCollisions,
-        "Too many different files with this name already exist in the destination.");
+        Loc.T("Too many different files with this name already exist in the destination."));
 }
 
 /// <summary>Human-readable sizes, counts and durations.</summary>
@@ -130,7 +130,7 @@ public static class Format
     /// <summary>Decimal units, like Finder and Windows Explorer's drive sizes: 1 GB = 1,000,000,000 bytes.</summary>
     public static string Bytes(long count)
     {
-        if (count < 1000) return count == 1 ? "1 byte" : $"{count} bytes";
+        if (count < 1000) return $"{count} {Loc.Noun((int)count, "byte", "bytes")}";
         double value = count;
         var unit = 0;
         while (value >= 1000 && unit < Units.Length - 1)
@@ -149,14 +149,15 @@ public static class Format
         return name.Length > 0 ? name : path;
     }
 
+    /// <summary>"1 photo", "1,234 photos": the noun in Notch's language and the form for the number (see <see cref="Loc.Noun"/>).</summary>
     public static string Count(int number, string singular, string? plural = null) =>
-        $"{number:N0} {(number == 1 ? singular : plural ?? singular + "s")}";
+        $"{number:N0} {Loc.Noun(number, singular, plural ?? singular + "s")}";
 
     public static string Duration(TimeSpan time)
     {
         var seconds = Math.Max(1, (int)Math.Round(time.TotalSeconds));
-        if (seconds >= 3600) return $"{seconds / 3600}h {seconds % 3600 / 60}m";
-        if (seconds >= 60) return $"{seconds / 60}m {seconds % 60}s";
-        return $"{seconds}s";
+        if (seconds >= 3600) return Loc.F("{0}h {1}m", seconds / 3600, seconds % 3600 / 60);
+        if (seconds >= 60) return Loc.F("{0}m {1}s", seconds / 60, seconds % 60);
+        return Loc.F("{0}s", seconds);
     }
 }

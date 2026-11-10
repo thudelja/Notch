@@ -15,4 +15,9 @@
     <InternalsVisibleTo Include="SDBackup.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Translations, by their English text (see Localization.cs). -->
+    <EmbeddedResource Include="Strings\*.json" LogicalName="Strings.%(Filename).json" />
+  </ItemGroup>
+
 </Project>

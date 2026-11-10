@@ -53,6 +53,15 @@ jobs:
           Get-Content (Join-Path $out 'self-test.txt') -ErrorAction SilentlyContinue
           if ($process.ExitCode -ne 0) { throw "Self-test failed with exit code $($process.ExitCode)." }
 
+      # TEMPORARY (1.3 review): the self-test's screenshots. Remove before releasing 1.3.
+      - name: Upload the self-test screenshots
+        if: always() && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-test
+          path: ${{ runner.temp }}/self-test
+          retention-days: 2
+
       - name: Build (ARM64)
         run: dotnet publish src/SDBackup.App/SDBackup.App.csproj -c Release -r win-arm64 --self-contained true -p:PublishSingleFile=true -p:Version=$env:VERSION -o dist/win-arm64 --nologo
 

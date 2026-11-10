@@ -121,14 +121,14 @@ public sealed class ShootViewModel(MultiDayShoot shoot, ICommand finish, IComman
         get
         {
             var used = shoot.LastUsed.ToLocalTime().ToString("d", System.Globalization.CultureInfo.CurrentCulture);
-            if (shoot.Finished) return $"Finished · last used {used}";
-            return shoot.IsOpen ? $"Open · last used {used}" : $"Not used for 100 days · last used {used}";
+            if (shoot.Finished) return Loc.F("Finished · last used {0}", used);
+            return shoot.IsOpen ? Loc.F("Open · last used {0}", used) : Loc.F("Not used for 100 days · last used {0}", used);
         }
     }
 
-    public string FinishTitle => "Hold to finish";
-    public string FinishAccessibleName => $"Finish “{shoot.Name}”";
-    public string ReopenAccessibleName => $"Reopen “{shoot.Name}”";
+    public string FinishTitle => Loc.T("Hold to finish");
+    public string FinishAccessibleName => Loc.F("Finish “{0}”", shoot.Name);
+    public string ReopenAccessibleName => Loc.F("Reopen “{0}”", shoot.Name);
 
     /// <summary>The hold-to-finish button's command.</summary>
     public ICommand FinishCommand { get; } = finish;

@@ -64,6 +64,12 @@ public sealed record FolderLevel
 
     public static FolderLevel ProjectLevel(DateFormats dateFormat = DateFormats.DayMonthYear, NameOrders nameOrder = NameOrders.DateFirst) =>
         new() { Kind = LevelKind.Project, DateFormat = dateFormat, NameOrder = nameOrder };
+
+    // New levels in the folder structure editor, with folder names in Notch's language.
+    public static FolderLevel NewMediaTypeLevel() => Loc.IsSlovenian ? MediaTypeLevel("Foto", "Video") : MediaTypeLevel();
+    public static FolderLevel NewMonthLevel() => MonthLevel(language: Loc.IsSlovenian ? MonthLanguages.Slovenian : MonthLanguages.English);
+    public static FolderLevel NewTextLevel() => TextLevel(Loc.T("Folder"));
+    public static FolderLevel NewSplitLevel() => Loc.IsSlovenian ? SplitLevel("Neurejeno", "Izvoženo") : SplitLevel();
 }
 
 /// <summary>
@@ -99,6 +105,23 @@ public sealed record FolderStructure
     {
         Levels = [FolderLevel.MediaTypeLevel(), FolderLevel.MonthLevel(), FolderLevel.ProjectLevel()],
     };
+
+    /// <summary>
+    /// The standard structure with Slovenian folder names: Foto / Video, "11 november", and Posnetki, Projekt, Viri, Izvoz
+    /// in video projects.
+    /// </summary>
+    public static FolderStructure StandardSlovenian { get; } = new()
+    {
+        Levels = [FolderLevel.MediaTypeLevel("Foto", "Video"), FolderLevel.MonthLevel(language: FolderLevel.MonthLanguages.Slovenian), FolderLevel.ProjectLevel()],
+        VideoFolders = ["Posnetki", "Projekt", "Viri", "Izvoz"],
+        MediaFolder = "Posnetki",
+    };
+
+    /// <summary>
+    /// The structure a new, empty projects folder starts with: the standard one, with folder names in
+    /// <paramref name="language"/>. A folder keeps it (in its library.json) whatever language Notch shows later.
+    /// </summary>
+    public static FolderStructure DefaultFor(string language) => language == Loc.Slovenian ? StandardSlovenian : Standard;
 
     [JsonIgnore] public bool HasSplit => Levels.Any(l => l.Kind == FolderLevel.LevelKind.Split);
 
@@ -288,49 +311,54 @@ public sealed record FolderStructure
             var problems = new List<string>();
             var projectIndices = Levels.Select((level, index) => (level, index))
                 .Where(x => x.level.Kind == FolderLevel.LevelKind.Project).Select(x => x.index).ToList();
-            if (projectIndices.Count != 1) problems.Add("The structure needs exactly one project folder.");
+            if (projectIndices.Count != 1) problems.Add(Loc.T("The structure needs exactly one project folder."));
             if (projectIndices.Count > 0 && Levels.Skip(projectIndices[0] + 1).Any(l => l.Kind != FolderLevel.LevelKind.Split))
             {
-                problems.Add("Only the Unedited / Exported folders can go inside the project folder.");
+                problems.Add(Loc.T("Only the Unedited / Exported folders can go inside the project folder."));
             }
-            foreach (var (kind, label) in new[]
+            foreach (var (kind, problem) in new[]
                      {
-                         (FolderLevel.LevelKind.MediaType, "Photo / Video"),
-                         (FolderLevel.LevelKind.Month, "the month"),
-                         (FolderLevel.LevelKind.Split, "Unedited / Exported"),
+                         (FolderLevel.LevelKind.MediaType, Loc.T("Use Photo / Video only once.")),
+                         (FolderLevel.LevelKind.Month, Loc.T("Use the month only once.")),
+                         (FolderLevel.LevelKind.Split, Loc.T("Use Unedited / Exported only once.")),
                      })
             {
-                if (Levels.Count(l => l.Kind == kind) > 1) problems.Add($"Use {label} only once.");
+                if (Levels.Count(l => l.Kind == kind) > 1) problems.Add(problem);
             }
             foreach (var level in Levels)
             {
                 switch (level.Kind)
                 {
                     case FolderLevel.LevelKind.MediaType:
-                        if (Blank(level.Photo) || Blank(level.Video)) problems.Add("The photo and video folders need names.");
-                        else if (Same(level.Photo, level.Video)) problems.Add("The photo and video folders need different names.");
+                        if (Blank(level.Photo) || Blank(level.Video)) problems.Add(Loc.T("The photo and video folders need names."));
+                        else if (Same(level.Photo, level.Video)) problems.Add(Loc.T("The photo and video folders need different names."));
                         break;
                     case FolderLevel.LevelKind.Text:
-                        if (Blank(level.Text)) problems.Add("A folder level has no name.");
+                        if (Blank(level.Text)) problems.Add(Loc.T("A folder level has no name."));
                         break;
                     case FolderLevel.LevelKind.Split:
-                        if (Blank(level.Unedited) || Blank(level.Exported)) problems.Add("The Unedited and Exported folders need names.");
-                        else if (Same(level.Unedited, level.Exported)) problems.Add("The Unedited and Exported folders need different names.");
+                        if (Blank(level.Unedited) || Blank(level.Exported)) problems.Add(Loc.T("The Unedited and Exported folders need names."));
+                        else if (Same(level.Unedited, level.Exported)) problems.Add(Loc.T("The Unedited and Exported folders need different names."));
                         break;
                 }
             }
-            if (VideoFolders.Any(Blank)) problems.Add("Every video project folder needs a name.");
+            if (VideoFolders.Any(Blank)) problems.Add(VideoFolderUnnamed);
             var lowered = VideoFolders.Select(f => f.Trim().ToLowerInvariant()).ToList();
-            if (lowered.Distinct().Count() != lowered.Count) problems.Add("Video project folders need different names.");
+            if (lowered.Distinct().Count() != lowered.Count) problems.Add(VideoFoldersSameName);
             if (MediaFolder.Length > 0 && !VideoFolders.Any(f => Same(f, MediaFolder)))
             {
-                problems.Add("The folder for videos must be one of the video project folders.");
+                problems.Add(MediaFolderMissing);
             }
             return problems;
         }
     }
 
     [JsonIgnore] public bool IsValid => Problems.Count == 0;
+
+    // Problems with the video project folders, which a photos' structure doesn't use.
+    private static string VideoFolderUnnamed => Loc.T("Every video project folder needs a name.");
+    private static string VideoFoldersSameName => Loc.T("Video project folders need different names.");
+    private static string MediaFolderMissing => Loc.T("The folder for videos must be one of the video project folders.");
 
     private static bool Blank(string? text) => string.IsNullOrWhiteSpace(text);
 
@@ -371,25 +399,23 @@ public sealed record FolderStructure
     {
         var day = new ShootDay(2026, 11, 2);
         string[] camera = CameraFolders ? ["R5"] : [];
-        if (branch == Branch.Photo) return [.. FilesPath(Branch.Photo, "Ana Wedding", day, series), .. camera, "IMG_0001.CR3"];
+        if (branch == Branch.Photo) return [.. FilesPath(Branch.Photo, SampleName, day, series), .. camera, "IMG_0001.CR3"];
         string[] media = MediaFolder.Length > 0 ? [Safe(MediaFolder, "Media")] : [];
-        return [.. FilesPath(Branch.Video, "Ana Wedding", day, series), .. media, .. MediaDayFolder(Branch.Video, "Ana Wedding", day, series), .. camera, "C0001.MP4"];
+        return [.. FilesPath(Branch.Video, SampleName, day, series), .. media, .. MediaDayFolder(Branch.Video, SampleName, day, series), .. camera, "C0001.MP4"];
     }
 
     /// <summary>The sample project's empty Exported folder for photos or videos, with a split.</summary>
     public IReadOnlyList<string>? ExampleExports(Branch branch, string? series = null) =>
-        ExportedPath(branch, "Ana Wedding", new ShootDay(2026, 11, 2), series);
+        ExportedPath(branch, SampleName, new ShootDay(2026, 11, 2), series);
+
+    /// <summary>The sample project in the examples.</summary>
+    private static string SampleName => Loc.T("Ana Wedding");
 
     /// <summary>The problems that matter for one kind of files: a photo structure's video folders are never used.</summary>
     public IReadOnlyList<string> ProblemsFor(Branch branch)
     {
         if (branch != Branch.Photo) return Problems;
-        string[] videoOnly =
-        [
-            "Every video project folder needs a name.",
-            "Video project folders need different names.",
-            "The folder for videos must be one of the video project folders.",
-        ];
+        string[] videoOnly = [VideoFolderUnnamed, VideoFoldersSameName, MediaFolderMissing];
         return Problems.Where(p => !videoOnly.Contains(p)).ToList();
     }
 

@@ -63,6 +63,8 @@ public sealed class LibraryStore
     public Guid? Library(string root)
     {
         root = PathUtil.Normalize(root);
+        // A new projects folder keeps the folder names it starts with, whatever language Notch shows later.
+        var named = IsEmptyFolder(root) && FolderStructure.DefaultFor(Loc.Language) is { IsStandard: false } structure ? structure : null;
         if (!Directory.Exists(root))
         {
             // Only create the folder when its parent exists, so an unplugged drive isn't recreated.
@@ -76,7 +78,7 @@ public sealed class LibraryStore
         if (manifest is null)
         {
             var knownId = _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, root))?.LibraryId ?? Guid.NewGuid();
-            manifest = LibraryManifest.Create(knownId, _projects.Where(p => p.LibraryId == knownId));
+            manifest = LibraryManifest.Create(knownId, _projects.Where(p => p.LibraryId == knownId), named, named);
             try { manifest.Write(root); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
         }
@@ -162,10 +164,29 @@ public sealed class LibraryStore
     /// <summary>The folder structure new projects' photos or videos in the projects folder at <paramref name="root"/> get.</summary>
     public FolderStructure Structure(FolderStructure.Branch branch, string root)
     {
-        var manifest = LibraryManifest.Read(PathUtil.Normalize(root));
-        return branch == FolderStructure.Branch.Photo
-            ? manifest?.Layout ?? FolderStructure.Standard
-            : manifest?.VideoLayout ?? FolderStructure.Standard;
+        root = PathUtil.Normalize(root);
+        if (LibraryManifest.Read(root) is not { } manifest) return IsEmptyFolder(root) ? FolderStructure.DefaultFor(Loc.Language) : FolderStructure.Standard;
+        return branch == FolderStructure.Branch.Photo ? manifest.Layout : manifest.VideoLayout;
+    }
+
+    /// <summary>
+    /// A folder that doesn't exist yet or holds nothing (apart from hidden and system files). Notch hasn't used it, and nothing
+    /// in it has English folder names, so it gets folder names in Notch's language.
+    /// </summary>
+    private static bool IsEmptyFolder(string root)
+    {
+        try
+        {
+            return !Directory.Exists(root) || !Directory.EnumerateFileSystemEntries(root).Select(Path.GetFileName).Any(name =>
+                name is { Length: > 0 } && name[0] is not ('.' or '$')
+                && !string.Equals(name, "desktop.ini", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(name, "Thumbs.db", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

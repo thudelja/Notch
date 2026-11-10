@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 
+using SDBackup.Core;
+
 namespace SDBackup.Windows;
 
 /// <summary>A photo app Notch can open new photos in after an import (Settings › After importing).</summary>
@@ -35,16 +37,16 @@ public static class PhotoApps
     {
         PhotoApp.LightroomClassic => "Lightroom Classic",
         PhotoApp.Lightroom => "Lightroom",
-        _ => "Don’t open",
+        _ => Loc.T("Don’t open"),
     };
 
     public static string Explanation(PhotoApp app) => app switch
     {
         PhotoApp.LightroomClassic =>
-            "After each import, Lightroom Classic opens its Import window with the new photos. Choose “Add” at the top of that window to keep them where Notch put them.",
+            Loc.T("After each import, Lightroom Classic opens its Import window with the new photos. Choose “Add” at the top of that window to keep them where Notch put them."),
         PhotoApp.Lightroom =>
-            "After each import, Lightroom opens its Add Photos window with the new photos. Lightroom copies them into its own library and syncs them to Adobe’s cloud.",
-        _ => "Notch only copies the photos into your projects folder.",
+            Loc.T("After each import, Lightroom opens its Add Photos window with the new photos. Lightroom copies them into its own library and syncs them to Adobe’s cloud."),
+        _ => Loc.T("Notch only copies the photos into your projects folder."),
     };
 
     /// <summary>

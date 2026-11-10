@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using SDBackup.Core;
 
 namespace SDBackup.App;
 
@@ -46,7 +47,7 @@ public sealed class HoldButton : Button
         content.Children.Add(_text);
         Content = content;
         SetResourceReference(StyleProperty, "SubtleButton");
-        ToolTip = "Hold for 1.5 seconds";
+        ToolTip = Loc.T("Hold for 1.5 seconds");
         UpdateRing();
         // When it appears (the row's choice changes to a shoot), not when it's loaded hidden.
         IsVisibleChanged += (_, e) =>
@@ -170,7 +171,7 @@ public sealed class HoldButton : Button
 /// <summary>Invoking the button from a screen reader or UI Automation runs its command: there is nothing to hold.</summary>
 internal sealed class HoldButtonAutomationPeer(HoldButton owner) : ButtonAutomationPeer(owner), IInvokeProvider
 {
-    protected override string GetHelpTextCore() => "Hold for 1.5 seconds";
+    protected override string GetHelpTextCore() => Loc.T("Hold for 1.5 seconds");
 
     void IInvokeProvider.Invoke()
     {

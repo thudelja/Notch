@@ -1,9 +1,11 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
+using SDBackup.Core;
 using SDBackup.Windows;
 
 namespace SDBackup.App;
@@ -12,6 +14,7 @@ namespace SDBackup.App;
 /// Starts Notch in the notification area. Command-line options:
 /// <list type="bullet">
 /// <item><c>--background</c>: start without opening the panel (used when starting with Windows).</item>
+/// <item><c>--settings</c>: open Settings (used when restarting in another language).</item>
 /// <item><c>--self-test &lt;folder&gt;</c>: open every window with sample data, write screenshots and a report, then exit.</item>
 /// </list>
 /// </summary>
@@ -80,6 +83,7 @@ public partial class App : Application
 
         Directory.CreateDirectory(AppPaths.Data);
         var settings = new AppSettings(Path.Combine(AppPaths.Data, "settings.json"));
+        Loc.Use(Loc.Resolve(settings.Language));
         var library = new LibraryStore(AppPaths.Data);
         var log = new BackupLog(AppPaths.Logs);
 
@@ -96,11 +100,13 @@ public partial class App : Application
         tray.QuitRequested += () => model.QuitCommand.Execute(null);
         model.SettingsRequested += ShowSettings;
         model.QuitRequested += ExitApp;
+        model.RestartRequested += RestartApp;
         model.WaitingCountChanged += tray.SetWaitingCount;
 
         model.Start();
         ConfigureStartupOnFirstRun();
-        if (!e.Args.Contains("--background")) ShowPanel();
+        if (e.Args.Contains("--settings")) ShowSettings();
+        else if (!e.Args.Contains("--background")) ShowPanel();
     }
 
     private void ShowPanel() => _flyout?.ShowNearTray();
@@ -144,6 +150,16 @@ public partial class App : Application
             ?? throw new FileNotFoundException($"Missing icon resource {name}.");
         using var stream = resource.Stream;
         return new System.Drawing.Icon(stream, System.Windows.Forms.SystemInformation.SmallIconSize);
+    }
+
+    /// <summary>Starts a new copy, which opens Settings, and quits. The new copy can start because this one lets go of the single-instance lock first.</summary>
+    private void RestartApp()
+    {
+        _instance?.ReleaseMutex();
+        _instance?.Dispose();
+        _instance = null;
+        if (Environment.ProcessPath is { } exe) Process.Start(new ProcessStartInfo(exe, "--settings") { UseShellExecute = false });
+        ExitApp();
     }
 
     private void ExitApp()

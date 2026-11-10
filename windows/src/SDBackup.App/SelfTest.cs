@@ -18,8 +18,8 @@ namespace SDBackup.App;
 
 /// <summary>
 /// <c>Notch.exe --self-test &lt;folder&gt;</c>: opens the panel, the settings window and the folder structure editor with
-/// sample data in light and dark mode, fails on any XAML error or data-binding error, and writes screenshots and a report to the
-/// folder. CI runs this on Windows to catch problems a compiler can't.
+/// sample data in light and dark mode, and in Slovenian, fails on any XAML error or data-binding error, and writes screenshots
+/// and a report to the folder. CI runs this on Windows to catch problems a compiler can't.
 /// </summary>
 internal static class SelfTest
 {
@@ -40,9 +40,10 @@ internal static class SelfTest
             _ = App.LoadIcon("TrayAttention.ico");
             report.Add("Icons: loaded");
 
-            foreach (var dark in new[] { false, true })
+            foreach (var (language, dark) in new[] { (Loc.English, false), (Loc.English, true), (Loc.Slovenian, false) })
             {
-                var theme = dark ? "dark" : "light";
+                Loc.Use(language);
+                var theme = (dark ? "dark" : "light") + (language == Loc.English ? "" : "-" + language);
                 ThemeManager.Apply(app.Resources, forceDark: dark);
 
                 var model = new AppModel(new AppSettings(null), new LibraryStore(null), new BackupLog(null), new SilentDialogs(), (_, _) => { }, null);
@@ -72,7 +73,7 @@ internal static class SelfTest
                 Save(flyout, Path.Combine(folder, $"panel-{theme}.png"));
                 report.Add($"Panel ({theme}): {flyout.ActualWidth:0}×{flyout.ActualHeight:0}, import ready: {draft.IsReady}");
                 if (!draft.IsReady) throw new InvalidOperationException($"The sample import isn't ready: {draft.BlockingReason}");
-                if (!first.HasChosenPhotoFolder || first.PhotoPlaceText != "Photos → Clients" || !first.ShowsVideoPlace)
+                if (!first.HasChosenPhotoFolder || first.PhotoPlaceText != Loc.F("Photos → {0}", "Clients") || !first.ShowsVideoPlace)
                 {
                     throw new InvalidOperationException($"The new project's places are wrong: “{first.PhotoPlaceText}”, “{first.VideoPlaceText}”.");
                 }
@@ -119,6 +120,11 @@ internal static class SelfTest
                 if (Descendants<TextBlock>(settings).All(text => text.Text != model.VersionText))
                 {
                     throw new InvalidOperationException("Settings doesn't show the version.");
+                }
+                // The windows' own texts ({l:T …}) are in the language too.
+                if (Descendants<TextBlock>(settings).All(text => text.Text != Loc.T("Multi-day shoots")))
+                {
+                    throw new InvalidOperationException($"Settings isn't in {language}.");
                 }
                 // The open multi-day shoot can be finished, the finished one reopened.
                 var shootButtons = Descendants<Button>(settings).Where(button => button.IsVisible && button.DataContext is ShootViewModel).ToList();

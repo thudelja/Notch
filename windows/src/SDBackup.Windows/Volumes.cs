@@ -27,13 +27,14 @@ public sealed record VolumeInfo(
     public string Id => Root;
 
     /// <summary>"EOS_DIGITAL" or "Removable disk".</summary>
-    public string Name => Label.Length > 0 ? Label : "Removable disk";
+    public string Name => Label.Length > 0 ? Label : Loc.T("Removable disk");
 
     /// <summary>"EOS_DIGITAL (E:)"</summary>
     public string DisplayName => $"{Name} ({Root.TrimEnd('\\')})";
 
     /// <summary>Identifies the card until it is reformatted, for import records and camera names.</summary>
-    public string CardId => Serial ?? $"{Name}-{Capacity ?? 0}";
+    /// <summary>Remembers the card's imports. Never translated, so a card keeps its record in any language.</summary>
+    public string CardId => Serial ?? $"{(Label.Length > 0 ? Label : "Removable disk")}-{Capacity ?? 0}";
 
     public bool IsRemovableMedia => IsRemovable && !IsSystem;
 
@@ -177,7 +178,7 @@ public static class Ejector
                 locked = Native.DeviceIoControl(handle, Native.FsctlLockVolume, null, 0, null, 0, out _, IntPtr.Zero);
                 if (!locked) Thread.Sleep(500);
             }
-            if (!locked) return "The card is still in use by another app. Close any windows showing it and try again.";
+            if (!locked) return Loc.T("The card is still in use by another app. Close any windows showing it and try again.");
 
             if (!Native.DeviceIoControl(handle, Native.FsctlDismountVolume, null, 0, null, 0, out _, IntPtr.Zero))
             {

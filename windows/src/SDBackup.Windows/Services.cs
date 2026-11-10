@@ -109,6 +109,9 @@ public enum CardDetection
     AnyRemovable,
 }
 
+/// <summary>An entry in Settings › Language: a setting value and its name.</summary>
+public sealed record LanguageChoice(string Value, string Title);
+
 /// <summary>User preferences, saved to %APPDATA%\Notch\settings.json on every change.</summary>
 public sealed class AppSettings : ObservableObject
 {
@@ -123,6 +126,7 @@ public sealed class AppSettings : ObservableObject
         public bool NotificationsEnabled { get; init; } = true;
         public string? LastMigrationPath { get; init; }
         [JsonConverter(typeof(JsonStringEnumConverter))] public PhotoApp PhotoApp { get; init; } = PhotoApp.None;
+        public string? Language { get; init; }
     }
 
     private readonly string? _file;
@@ -135,6 +139,7 @@ public sealed class AppSettings : ObservableObject
     private bool _notificationsEnabled;
     private string? _lastMigrationPath;
     private PhotoApp _photoApp;
+    private string _language;
 
     /// <param name="file">Null keeps settings in memory only (used by the self-test).</param>
     public AppSettings(string? file)
@@ -150,6 +155,7 @@ public sealed class AppSettings : ObservableObject
         _notificationsEnabled = stored.NotificationsEnabled;
         _lastMigrationPath = stored.LastMigrationPath;
         _photoApp = stored.PhotoApp;
+        _language = stored.Language is Loc.English or Loc.Slovenian ? stored.Language : "";
     }
 
     public string ProjectsFolder { get => _projectsFolder; set => Set(ref _projectsFolder, value); }
@@ -164,7 +170,7 @@ public sealed class AppSettings : ObservableObject
     public bool HasSeparateVideosFolder => SeparateVideosFolder is not null;
 
     /// <summary>Settings: the videos folder, or "Same as photos".</summary>
-    public string VideosFolderText => SeparateVideosFolder ?? "Same as photos";
+    public string VideosFolderText => SeparateVideosFolder ?? Loc.T("Same as photos");
     public bool AutoImport { get => _autoImport; set => Set(ref _autoImport, value); }
     public CardDetection Detection { get => _detection; set => Set(ref _detection, value); }
     public bool VerifyCopies { get => _verifyCopies; set => Set(ref _verifyCopies, value); }
@@ -177,11 +183,25 @@ public sealed class AppSettings : ObservableObject
 
     public IReadOnlyList<PhotoAppChoice> PhotoAppChoices => PhotoApps.Choices;
 
+    /// <summary>"" follows the computer's display language; "en" or "sl" picks one. Notch switches when it next starts.</summary>
+    public string Language { get => _language; set => Set(ref _language, value is Loc.English or Loc.Slovenian ? value : ""); }
+
+    /// <summary>Language names are written in their own language, so each can be found by those who read it.</summary>
+    public IReadOnlyList<LanguageChoice> LanguageChoices { get; } =
+    [
+        new("", Loc.T("Same as the computer")),
+        new(Loc.English, "English"),
+        new(Loc.Slovenian, "Slovenščina"),
+    ];
+
+    /// <summary>The chosen language isn't the one Notch shows: it switches when Notch starts again.</summary>
+    public bool LanguageNeedsRestart => Loc.Resolve(Language) != Loc.Language;
+
     public string PhotoAppExplanation => PhotoApps.Explanation(PhotoApp);
 
     /// <summary>Empty unless the chosen app can't be found.</summary>
     public string PhotoAppNote => PhotoApp != PhotoApp.None && PhotoApps.FindExecutable(PhotoApp) is null
-        ? $"{PhotoApps.Title(PhotoApp)} isn’t installed on this PC."
+        ? Loc.F("{0} isn’t installed on this PC.", PhotoApps.Title(PhotoApp))
         : "";
 
     public bool DetectAnyRemovable
@@ -191,8 +211,8 @@ public sealed class AppSettings : ObservableObject
     }
 
     public string DetectionExplanation => Detection == CardDetection.MemoryCards
-        ? "Cards in an SD slot or card reader, plus any removable drive with a camera (DCIM) folder."
-        : "Also includes USB flash drives and other removable media. External hard drives and SSDs are never included.";
+        ? Loc.T("Cards in an SD slot or card reader, plus any removable drive with a camera (DCIM) folder.")
+        : Loc.T("Also includes USB flash drives and other removable media. External hard drives and SSDs are never included.");
 
     private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
@@ -208,6 +228,7 @@ public sealed class AppSettings : ObservableObject
             OnPropertyChanged(nameof(DetectAnyRemovable));
             OnPropertyChanged(nameof(DetectionExplanation));
         }
+        if (name == nameof(Language)) OnPropertyChanged(nameof(LanguageNeedsRestart));
         if (name == nameof(PhotoApp))
         {
             OnPropertyChanged(nameof(PhotoAppExplanation));
@@ -232,6 +253,7 @@ public sealed class AppSettings : ObservableObject
                 NotificationsEnabled = _notificationsEnabled,
                 LastMigrationPath = _lastMigrationPath,
                 PhotoApp = _photoApp,
+                Language = _language.Length > 0 ? _language : null,
             });
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
