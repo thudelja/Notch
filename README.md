@@ -5,7 +5,8 @@
 A macOS menu bar app that imports SD cards straight into organised project folders.
 
 Insert a card. Notch reads it, works out the shoot dates and which cameras were used, and asks
-which project each shoot date belongs to: a new project or one of your last three. It then copies
+which project each shoot date belongs to: a new project, one of your last two, or a project in any
+folder you choose. It then copies
 photos and videos into the right year, month, project and camera folders and verifies every copy.
 
 **Also on Windows:** a Windows 10/11 version with the same features lives in [`windows/`](windows/).
@@ -90,8 +91,13 @@ with, and adding a day to it still puts the files in its folder.
 3. **Click the Notch icon** (an SD card with a check) in the menu bar. The Import panel lists every shoot date on the card with its
    photo, video and audio counts. For each date, choose:
    - **New project** and type its name
+   - **New project in a folder…**: choose any folder, for example `2026/AMD Koledar 2026` for a
+     calendar shot over several days, and type a name. Notch makes the project's folder
+     (`02.11.2026 Ana`) inside it, with camera folders for photos and `Media/<camera>` for videos.
+     If you choose the folder of a project Notch already knows, the date is added to that project
+     instead, which is how you reach older projects.
    - **Same as** another new project on this card (for a multi-day shoot)
-   - one of your **last three projects**
+   - one of your **last two projects**
    - **Skip for now**
 
    By default, every date goes into one new project. Below the dates, check the **camera folder
@@ -186,6 +192,12 @@ macOS will ask for two permissions. Allow both:
 When the app runs from `/Applications`, it registers itself to open at login the first time it
 starts. You can change this in Settings.
 
+**Updating from 1.0 or 1.1:** Notch 1.2 has its own app identifier (the earlier one came from the
+first SD Backup builds, which is why notifications showed a blank icon). Your settings, camera
+names and recent imports carry over automatically, but macOS asks once more for notifications and
+card access. If **System Settings › General › Login Items** lists Notch twice, remove the entry that
+is switched off.
+
 > Notch is signed ad hoc rather than with an Apple Developer ID. macOS ties privacy permissions to
 > the signature, so after an update you may be asked for card access again.
 
@@ -207,7 +219,9 @@ ejected. If macOS says the disk is still in use, eject it again.
 
 ## Settings
 
-- **Projects folder**, and its **folder structure** (see above).
+- **Projects folder** for photos and, if you like, a **separate folder for videos** (for example on
+  an SSD). Videos of new projects then go there in the same folder structure; existing projects
+  stay where they are. Also the **folder structure** (see above).
 - **Ask for a project as soon as a card is inserted.**
 - **Which cards count:** SD and camera cards, or any removable drive. External hard drives and
   SSDs are never included.
@@ -217,7 +231,9 @@ ejected. If macOS says the disk is still in use, eject it again.
   aren't sent. In Lightroom Classic, choose **Add** to keep the photos where Notch put them.
   Lightroom copies them into its own library and syncs them to Adobe's cloud.
 - **Open at login** and **notifications**.
-- **Move a year to another drive** (see above).
+- **Move a year to another drive** (see above). With a separate videos folder, choose whether to
+  move the year from the photos or the videos folder.
+- The **version** is shown at the bottom.
 - **Forget Imported Files** offers every file on every card again. **Forget Camera Names**
   resets the folder names you've given cameras.
 

@@ -9,7 +9,8 @@ folder on an exFAT SSD works on both.
 - Lives in the **notification area** (bottom right, next to Wi-Fi and the clock). Click the Notch
   icon (an orange SD card with a check) to open a panel styled like Windows 11 Quick Settings. Right-click for a menu.
 - When a card goes in, it reads the shoot dates and cameras, shows a notification, and the panel
-  asks which project each shoot date belongs to (a new project or one of your last three).
+  asks which project each shoot date belongs to (a new project, one of your last two, or a project in any
+  folder you choose).
 - Copies into `Projects\2026\Photo\11 November\02.11.2026 Name\<Camera>\` and
   `Projects\2026\Video\11 November\02.11.2026 Name\Media\<Camera>\` (plus `Project`, `Assets`,
   `Export`), or into a structure of your own, verifies every file with SHA-256, never overwrites, and
@@ -65,7 +66,9 @@ yourself don't trigger SmartScreen.
 - **Turn off Windows' own prompt (optional).** Windows shows its own AutoPlay prompt when a card goes in.
   To stop it, set **Memory card** to **Take no action** in **Settings › Bluetooth & devices ›
   AutoPlay**.
-- **Projects folder.** The default is `Pictures\Projects`. Change it in **Settings**.
+- **Projects folder.** The default is `Pictures\Projects`. Change it in **Settings**, where you can also
+  choose a separate folder for videos (for example on an SSD). Videos of new projects then go there in the
+  same folder structure. The version is shown at the bottom of Settings.
 
 ## Using it
 
@@ -73,8 +76,11 @@ The panel shows, from top to bottom:
 
 - **Quick settings tiles:** Auto import, Verify and Auto eject. Below them, buttons that open the
   projects folder, Settings and the log.
-- **Import:** one row per shoot date with a project picker (New project, Same as another new
-  project, your last three projects, or Skip for now), and the camera folder names.
+- **Import:** one row per shoot date with a project picker (New project, New project in a folder…, Same
+  as another new project, your last two projects, or Skip for now), and the camera folder names. **New
+  project in a folder…** lets you choose any folder, for example `2026\AMD Koledar 2026` for a calendar
+  shot over several days; Notch makes the project's dated folder inside it. Choosing the folder of a
+  project Notch already knows adds the date to that project.
 - **Progress:** reading a card, an import, or a year being moved, each with a cancel button.
 - **Cards:** connected cards, when each was last imported, and **Import** and **Eject** buttons.
 - **Recent:** the last imports. Click one to open its folder.
