@@ -33,7 +33,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 20)
                     Text("Videos")
-                    Text(settings.abbreviatedVideos ?? "Same as photos")
+                    Text(settings.abbreviatedVideos ?? String(localized: "Same as photos"))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -92,7 +92,7 @@ struct SettingsView: View {
             Section("Move a year to another drive") {
                 if let migration = model.migration {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(verbatim: "Moving \(migration.yearText) to “\(migration.driveName)”…")
+                        Text(verbatim: String(localized: "Moving \(migration.yearText) to “\(migration.driveName)”…"))
                         ProgressView(value: migration.progress.phase == .copying ? migration.progress.fractionCompleted : nil)
                         Button("Stop") { model.cancelMigration() }
                     }
@@ -106,8 +106,8 @@ struct SettingsView: View {
                     }
                     if years.isEmpty {
                         Text(verbatim: yearSource == .videos && settings.videosURL != nil
-                            ? "There are no year folders in the videos folder yet."
-                            : "There are no year folders in the projects folder yet.")
+                            ? String(localized: "There are no year folders in the videos folder yet.")
+                            : String(localized: "There are no year folders in the projects folder yet."))
                             .foregroundStyle(.secondary)
                     } else {
                         HStack {
@@ -167,6 +167,22 @@ struct SettingsView: View {
             }
 
             Section("General") {
+                Picker("Language", selection: $settings.language) {
+                    Text("Same as the Mac").tag("")
+                    // Each language in its own language, so it can be found by those who read it.
+                    Text(verbatim: "English").tag(AppLanguage.english)
+                    Text(verbatim: "Slovenščina").tag(AppLanguage.slovenian)
+                }
+                if settings.languageNeedsRestart {
+                    HStack {
+                        Text("Notch switches to the new language when it starts again.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Restart Now") { model.restart() }
+                    }
+                }
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                 Toggle("Show notifications", isOn: $settings.notificationsEnabled)
                 HStack {
@@ -218,7 +234,7 @@ struct SettingsView: View {
     /// "Notch 1.2.0"; builds that aren't releases are "0.0.0-dev".
     static var versionText: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-        return version.isEmpty || version.hasPrefix("0.0.0") ? "Notch (test build)" : "Notch \(version)"
+        return version.isEmpty || version.hasPrefix("0.0.0") ? String(localized: "Notch (test build)") : "Notch \(version)"
     }
 
     /// Where a new project's photo and video go, as example paths.
@@ -270,7 +286,7 @@ final class SettingsWindowController {
                 .environmentObject(model.settings)
                 .environmentObject(model.library.shoots)
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "Notch Settings"
+            window.title = String(localized: "Notch Settings")
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()

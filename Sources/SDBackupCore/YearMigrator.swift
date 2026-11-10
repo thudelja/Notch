@@ -54,7 +54,7 @@ public struct YearMigrator {
 
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: source.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            throw BackupError.sourceUnreadable(path: source.path, reason: "There is no \(year) folder.")
+            throw BackupError.sourceUnreadable(path: source.path, reason: String(localized: "There is no \(String(year)) folder."))
         }
         let sourcePath = fileManager.canonicalPath(of: source)
         let destinationPath = fileManager.canonicalPath(of: destination)
@@ -89,7 +89,7 @@ public struct YearMigrator {
                 } catch {
                     deleteFailures.append(BackupFailure(
                         relativePath: done.source.relativePath,
-                        message: "Copied and verified, but the original couldn’t be deleted: \(error.localizedDescription)"
+                        message: String(localized: "Copied and verified, but the original couldn’t be deleted: \(error.localizedDescription)")
                     ))
                 }
             },

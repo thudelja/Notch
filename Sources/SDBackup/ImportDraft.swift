@@ -144,7 +144,7 @@ final class ImportDraft: ObservableObject, Identifiable {
         }
         options.append(ChoiceOption(choice: .newShoot, title: String(localized: "New multi-day shoot…")))
         for summary in days where summary.day != day && choice(for: summary.day).isNewProject {
-            options.append(ChoiceOption(choice: .sameAs(summary.day), title: String(localized: "Same as \(newProjectTitle(summary.day))")))
+            options.append(ChoiceOption(choice: .sameAs(summary.day), title: sameAsTitle(summary.day)))
         }
         for project in knownProjects {
             let title = isOnConnectedDrive(project)
@@ -156,11 +156,12 @@ final class ImportDraft: ObservableObject, Identifiable {
         return options
     }
 
-    private func newProjectTitle(_ owner: ShootDay) -> String {
+    /// "Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.
+    private func sameAsTitle(_ owner: ShootDay) -> String {
         let name = trimmedName(owner)
         return name.isEmpty
-            ? String(localized: "the new project on \(owner.folderDate)")
-            : String(localized: "“\(name)” (new)")
+            ? String(localized: "Same as the new project on \(owner.folderDate)")
+            : String(localized: "Same as “\(name)” (new)")
     }
 
     private func trimmedName(_ day: ShootDay) -> String {

@@ -10,7 +10,7 @@ enum PhotoApp: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .none: return "Don’t open"
+        case .none: return String(localized: "Don’t open")
         case .lightroomClassic: return "Lightroom Classic"
         case .lightroom: return "Lightroom"
         }
@@ -19,11 +19,11 @@ enum PhotoApp: String, CaseIterable, Identifiable {
     var explanation: String {
         switch self {
         case .none:
-            return "Notch only copies the photos into your projects folder."
+            return String(localized: "Notch only copies the photos into your projects folder.")
         case .lightroomClassic:
-            return "After each import, Lightroom Classic opens its Import window with the new photos. Choose “Add” at the top of that window to keep them where Notch put them."
+            return String(localized: "After each import, Lightroom Classic opens its Import window with the new photos. Choose “Add” at the top of that window to keep them where Notch put them.")
         case .lightroom:
-            return "After each import, Lightroom opens its Add Photos window with the new photos. Lightroom copies them into its own library and syncs them to Adobe’s cloud."
+            return String(localized: "After each import, Lightroom opens its Add Photos window with the new photos. Lightroom copies them into its own library and syncs them to Adobe’s cloud.")
         }
     }
 

@@ -321,4 +321,16 @@ final class DestinationTests: XCTestCase {
         XCTAssertFalse(project.hasLegacyVideoLayout)
         XCTAssertEqual(project.videoLayout, .standard)
     }
+
+    /// Slovenian (1.3): a new, empty projects folder gets Slovenian folder names when Notch is in Slovenian.
+    func testANewFolderGetsSlovenianFolderNamesInSlovenian() {
+        let structure = FolderStructure.defaultFor(language: AppLanguage.slovenian)
+        XCTAssertEqual(structure.examplePath(.photo), ["2026", "Foto", "11 november", "02.11.2026 Ana Wedding", "R5", "IMG_0001.CR3"])
+        XCTAssertEqual(structure.examplePath(.video), ["2026", "Video", "11 november", "02.11.2026 Ana Wedding", "Posnetki", "R5", "C0001.MP4"])
+        XCTAssertEqual(structure.videoFolders, ["Posnetki", "Projekt", "Viri", "Izvoz"])
+        XCTAssertTrue(structure.isValid)
+        // English keeps the structure Notch has always used, so existing folders and projects don't change.
+        XCTAssertEqual(FolderStructure.defaultFor(language: AppLanguage.english), .standard)
+        XCTAssertNotEqual(FolderStructure.standardSlovenian, .standard)
+    }
 }

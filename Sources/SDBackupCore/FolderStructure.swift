@@ -97,6 +97,22 @@ public struct FolderLevel: Codable, Hashable, Sendable {
         level.nameOrder = nameOrder
         return level
     }
+
+    // New levels in the folder structure editor, with folder names in Notch's language.
+    public static func newMediaType() -> FolderLevel { AppLanguage.isSlovenian ? .mediaType(photo: "Foto", video: "Video") : .mediaType() }
+    public static func newMonth() -> FolderLevel { .month(language: AppLanguage.isSlovenian ? .slovenian : .english) }
+    public static func newFolder() -> FolderLevel { .folder(String(localized: "Folder")) }
+    public static func newSplit() -> FolderLevel { AppLanguage.isSlovenian ? .split(unedited: "Neurejeno", exported: "Izvoženo") : .split() }
+}
+
+/// The language Notch shows, "en" or "sl": macOS picks it at launch from the app's localizations and the user's
+/// preferred languages (or the app's Language setting).
+public enum AppLanguage {
+    public static let english = "en"
+    public static let slovenian = "sl"
+
+    public static var current: String { Bundle.main.preferredLocalizations.first == slovenian ? slovenian : english }
+    public static var isSlovenian: Bool { current == slovenian }
 }
 
 /// A sample path in the structure editor.
@@ -140,6 +156,20 @@ public struct FolderStructure: Codable, Hashable, Sendable {
 
     /// The structure Notch has always used.
     public static let standard = FolderStructure(levels: [.mediaType(), .month(), .project()])
+
+    /// The standard structure with Slovenian folder names: Foto / Video, "11 november", and Posnetki, Projekt, Viri,
+    /// Izvoz in video projects.
+    public static let standardSlovenian = FolderStructure(
+        levels: [.mediaType(photo: "Foto", video: "Video"), .month(language: .slovenian), .project()],
+        videoFolders: ["Posnetki", "Projekt", "Viri", "Izvoz"],
+        mediaFolder: "Posnetki"
+    )
+
+    /// The structure a new, empty projects folder starts with: the standard one, with folder names in `language`.
+    /// A folder keeps it (in its library.json) whatever language Notch shows later.
+    public static func defaultFor(language: String) -> FolderStructure {
+        language == AppLanguage.slovenian ? standardSlovenian : standard
+    }
 
     public var hasSplit: Bool { levels.contains { $0.kind == .split } }
 
@@ -298,14 +328,18 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         var problems: [String] = []
         let projectIndices = levels.indices.filter { levels[$0].kind == .project }
         if projectIndices.count != 1 {
-            problems.append("The structure needs exactly one project folder.")
+            problems.append(String(localized: "The structure needs exactly one project folder."))
         }
         if let project = projectIndices.first, levels[(project + 1)...].contains(where: { $0.kind != .split }) {
-            problems.append("Only the Unedited / Exported folders can go inside the project folder.")
+            problems.append(String(localized: "Only the Unedited / Exported folders can go inside the project folder."))
         }
-        let once: [(FolderLevel.Kind, String)] = [(.mediaType, "Photo / Video"), (.month, "the month"), (.split, "Unedited / Exported")]
-        for (kind, label) in once where levels.filter({ $0.kind == kind }).count > 1 {
-            problems.append("Use \(label) only once.")
+        let once: [(FolderLevel.Kind, String)] = [
+            (.mediaType, String(localized: "Use Photo / Video only once.")),
+            (.month, String(localized: "Use the month only once.")),
+            (.split, String(localized: "Use Unedited / Exported only once.")),
+        ]
+        for (kind, problem) in once where levels.filter({ $0.kind == kind }).count > 1 {
+            problems.append(problem)
         }
         func blank(_ text: String?) -> Bool { (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         func same(_ a: String?, _ b: String?) -> Bool {
@@ -315,36 +349,41 @@ public struct FolderStructure: Codable, Hashable, Sendable {
             switch level.kind {
             case .mediaType:
                 if blank(level.photo) || blank(level.video) {
-                    problems.append("The photo and video folders need names.")
+                    problems.append(String(localized: "The photo and video folders need names."))
                 } else if same(level.photo, level.video) {
-                    problems.append("The photo and video folders need different names.")
+                    problems.append(String(localized: "The photo and video folders need different names."))
                 }
             case .text:
-                if blank(level.text) { problems.append("A folder level has no name.") }
+                if blank(level.text) { problems.append(String(localized: "A folder level has no name.")) }
             case .split:
                 if blank(level.unedited) || blank(level.exported) {
-                    problems.append("The Unedited and Exported folders need names.")
+                    problems.append(String(localized: "The Unedited and Exported folders need names."))
                 } else if same(level.unedited, level.exported) {
-                    problems.append("The Unedited and Exported folders need different names.")
+                    problems.append(String(localized: "The Unedited and Exported folders need different names."))
                 }
             case .month, .project:
                 break
             }
         }
         if videoFolders.contains(where: { blank($0) }) {
-            problems.append("Every video project folder needs a name.")
+            problems.append(Self.videoFolderUnnamed)
         }
         let lowered = videoFolders.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
         if Set(lowered).count != lowered.count {
-            problems.append("Video project folders need different names.")
+            problems.append(Self.videoFoldersSameName)
         }
         if !mediaFolder.isEmpty, !videoFolders.contains(where: { same($0, mediaFolder) }) {
-            problems.append("The folder for videos must be one of the video project folders.")
+            problems.append(Self.mediaFolderMissing)
         }
         return problems
     }
 
     public var isValid: Bool { problems.isEmpty }
+
+    // Problems with the video project folders, which a photos' structure doesn't use.
+    private static var videoFolderUnnamed: String { String(localized: "Every video project folder needs a name.") }
+    private static var videoFoldersSameName: String { String(localized: "Video project folders need different names.") }
+    private static var mediaFolderMissing: String { String(localized: "The folder for videos must be one of the video project folders.") }
 
     // MARK: - Describing
 
@@ -377,27 +416,26 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         let camera: [String] = cameraFolders ? ["R5"] : []
         switch branch {
         case .photo:
-            return filesPath(.photo, name: "Ana Wedding", startDay: day, series: series) + camera + ["IMG_0001.CR3"]
+            return filesPath(.photo, name: Self.sampleName, startDay: day, series: series) + camera + ["IMG_0001.CR3"]
         case .video:
             let media: [String] = mediaFolder.isEmpty ? [] : [Self.safe(mediaFolder, fallback: "Media")]
-            return filesPath(.video, name: "Ana Wedding", startDay: day, series: series) + media
-                + mediaDayFolder(.video, name: "Ana Wedding", startDay: day, series: series) + camera + ["C0001.MP4"]
+            return filesPath(.video, name: Self.sampleName, startDay: day, series: series) + media
+                + mediaDayFolder(.video, name: Self.sampleName, startDay: day, series: series) + camera + ["C0001.MP4"]
         }
     }
 
     /// The sample project's empty Exported folder for photos or videos, with a split.
     public func exampleExports(_ branch: Branch, series: String? = nil) -> [String]? {
-        exportedPath(branch, name: "Ana Wedding", startDay: ShootDay(year: 2026, month: 11, day: 2), series: series)
+        exportedPath(branch, name: Self.sampleName, startDay: ShootDay(year: 2026, month: 11, day: 2), series: series)
     }
+
+    /// The sample project in the examples.
+    private static var sampleName: String { String(localized: "Ana Wedding") }
 
     /// The problems that matter for one kind of files: a photo structure's video folders are never used.
     public func problems(for branch: Branch) -> [String] {
         guard branch == .photo else { return problems }
-        let videoOnly: Set<String> = [
-            "Every video project folder needs a name.",
-            "Video project folders need different names.",
-            "The folder for videos must be one of the video project folders.",
-        ]
+        let videoOnly: Set<String> = [Self.videoFolderUnnamed, Self.videoFoldersSameName, Self.mediaFolderMissing]
         return problems.filter { !videoOnly.contains($0) }
     }
 

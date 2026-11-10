@@ -57,6 +57,8 @@ mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BIN_DIR}/${EXECUTABLE}" "${APP}/Contents/MacOS/${EXECUTABLE}"
 cp Resources/Info.plist "${APP}/Contents/Info.plist"
 cp Resources/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
+# English and Slovenian (macOS shows the one the Mac, or Notch's Language setting, asks for).
+cp -R Resources/*.lproj "${APP}/Contents/Resources/"
 if [[ -n ${VERSION} ]]; then
     plutil -replace CFBundleShortVersionString -string "${VERSION}" "${APP}/Contents/Info.plist"
 fi

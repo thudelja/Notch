@@ -95,6 +95,12 @@ jobs:
       - name: Test
         run: swift test
 
+      - name: Check the Slovenian translation (every text of the app has one)
+        run: |
+          swift build -Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/.build/strings"
+          plutil -lint Resources/*.lproj/*.strings
+          python3 scripts/check-translations.py .build/strings Resources/sl.lproj/Localizable.strings Sources
+
       - name: Build Notch.dmg (Apple silicon and Intel)
         run: |
           if [ "${GITHUB_REF_TYPE}" = tag ]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0-dev"; fi

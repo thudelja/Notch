@@ -14,7 +14,7 @@ struct ImportJob: Identifiable {
         switch projects.count {
         case 0: return volume.name
         case 1: return projects[0].name
-        default: return "\(projects[0].name) + \(projects.count - 1) more"
+        default: return String(localized: "\(projects[0].name) + \(projects.count - 1) more")
         }
     }
 }
@@ -102,6 +102,11 @@ final class AppModel: ObservableObject {
                 prepareImport(volume)
             }
         }
+
+        // Started again from Settings › Language: back to Settings.
+        if CommandLine.arguments.contains("--settings") {
+            DispatchQueue.main.async { [weak self] in self?.openSettings() }
+        }
     }
 
     // MARK: - Volumes
@@ -159,13 +164,13 @@ final class AppModel: ObservableObject {
 
     /// The user ejected the card in Finder: stop reading or copying so the eject can go through.
     private func volumeWillUnmount(_ url: URL) {
-        stopWork(on: url.path, reason: "Stopped because the card was ejected. Insert it again to finish the import.")
+        stopWork(on: url.path, reason: String(localized: "Stopped because the card was ejected. Insert it again to finish the import."))
     }
 
     private func volumeDidUnmount(_ url: URL) {
         connectedVolumes.removeAll { $0.id == url.path }
         library.refreshLocations()
-        stopWork(on: url.path, reason: "The card was removed before the import finished. Insert it again to finish.")
+        stopWork(on: url.path, reason: String(localized: "The card was removed before the import finished. Insert it again to finish."))
     }
 
     private func stopWork(on volumeID: String, reason: String) {
@@ -246,10 +251,10 @@ final class AppModel: ObservableObject {
         switch outcome {
         case .success(let analysis) where analysis.isEmpty:
             let detail = analysis.alreadyImported > 0
-                ? "All \(Format.count(analysis.alreadyImported, "file")) on it were imported before."
-                : "It has no photos, videos or audio."
+                ? Plural.text(analysis.alreadyImported, "The {0:N0} file on it was imported before.", "All {0:N0} files on it were imported before.")
+                : String(localized: "It has no photos, videos or audio.")
             log.write("“\(volume.name)”: nothing new. \(detail)")
-            notify("Nothing new on “\(volume.name)”", detail)
+            notify(String(localized: "Nothing new on “\(volume.name)”"), detail)
             if settings.ejectWhenDone, analysis.alreadyImported > 0 {
                 eject(volume, announce: true)
             }
@@ -258,15 +263,15 @@ final class AppModel: ObservableObject {
             drafts.append(draft)
             log.write("Read “\(volume.name)”: \(analysis.items.count) new files on \(draft.days.count) shoot day(s), \(analysis.alreadyImported) imported before")
             notify(
-                "“\(volume.name)” is ready to import",
-                "\(Format.count(draft.days.count, "shoot day")), \(Format.count(analysis.items.count, "new file")). Click the SD card icon in the menu bar to choose the project."
+                String(localized: "“\(volume.name)” is ready to import"),
+                String(localized: "\(Format.count(draft.days.count, "shoot day")), \(Format.count(analysis.items.count, "new file")). Click the SD card icon in the menu bar to choose the project.")
             )
         case .failure(let error):
             guard !(error is CancellationError) else { break }
             let message = error.localizedDescription
             log.write("Couldn’t read “\(volume.name)”: \(message)")
             record(.failed, title: volume.name, volume: volume, result: nil, folder: nil, message: message)
-            notify("Couldn’t read “\(volume.name)”", message)
+            notify(String(localized: "Couldn’t read “\(volume.name)”"), message)
         }
         startNextAnalysis()
     }
@@ -280,7 +285,7 @@ final class AppModel: ObservableObject {
         if analysis.hasUnknownCamera {
             names[""] = library.cameraName(forCard: volume.cardID)
                 ?? (analysis.cameraModels.count == 1 ? names[analysis.cameraModels[0]] : nil)
-                ?? "Camera"
+                ?? String(localized: "Camera")
         }
         return ImportDraft(
             volume: volume,
@@ -304,10 +309,10 @@ final class AppModel: ObservableObject {
         guard let projects = draft.resolvedProjects(
             store: library, photosRoot: settings.destinationURL, videosRoot: settings.videosURL ?? settings.destinationURL
         ) else {
-            let folders = settings.abbreviatedVideos.map { "\(settings.abbreviatedDestination) or \($0)" } ?? settings.abbreviatedDestination
+            let folders = settings.abbreviatedVideos.map { String(localized: "\(settings.abbreviatedDestination) or \($0)") } ?? settings.abbreviatedDestination
             showAlert(
-                "The projects folder isn’t available",
-                "\(folders) can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings."
+                String(localized: "The projects folder isn’t available"),
+                String(localized: "\(folders) can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings.")
             )
             return
         }
@@ -317,7 +322,7 @@ final class AppModel: ObservableObject {
             return (item.kind == .photo ? project.rootPath : project.videoRoot).isEmpty ? project : nil
         }.first
         if let offline {
-            showAlert("Connect the drive", "“\(offline.name)” is on a drive that isn’t connected. Connect it and click Import again.")
+            showAlert(String(localized: "Connect the drive"), String(localized: "“\(offline.name)” is on a drive that isn’t connected. Connect it and click Import again."))
             return
         }
         let plan = ProjectLayout.plan(items: draft.analysis.items, projects: projects) { draft.cameraName(for: $0) }
@@ -342,7 +347,7 @@ final class AppModel: ObservableObject {
     // MARK: - Step 3: copy
 
     func cancelImport() {
-        stopReason = "Cancelled. Files copied so far were kept."
+        stopReason = String(localized: "Cancelled. Files copied so far were kept.")
         copyTask?.cancel()
     }
 
@@ -353,7 +358,7 @@ final class AppModel: ObservableObject {
             if FileManager.default.fileExists(atPath: job.volume.url.path) {
                 run(job)
             } else {
-                notify("Couldn’t import “\(job.volume.name)”", "The card was removed. Insert it again to import.")
+                notify(String(localized: "Couldn’t import “\(job.volume.name)”"), String(localized: "The card was removed. Insert it again to import."))
             }
         }
     }
@@ -442,7 +447,7 @@ final class AppModel: ObservableObject {
 
         if result.isComplete {
             record(.completed, title: job.title, volume: job.volume, result: result, folder: job.primaryFolder)
-            notify("Import complete", "Copied \(copied) from “\(job.volume.name)” into \(job.title).")
+            notify(String(localized: "Import complete"), String(localized: "Copied \(copied) from “\(job.volume.name)” into \(job.title)."))
             let moreForThisCard = importQueue.contains { $0.volume.id == job.volume.id }
                 || drafts.contains { $0.volume.id == job.volume.id }
             if settings.ejectWhenDone, !moreForThisCard {
@@ -451,8 +456,13 @@ final class AppModel: ObservableObject {
         } else {
             record(.completedWithErrors, title: job.title, volume: job.volume, result: result, folder: job.primaryFolder)
             notify(
-                "Import finished with problems",
-                "Copied \(copied) into \(job.title), but \(Format.count(result.failures.count, "file")) couldn’t be copied. Open the log for details."
+                String(localized: "Import finished with problems"),
+                Plural.text(
+                    result.failures.count,
+                    "Copied {1} into {2}, but {0:N0} file couldn’t be copied. Open the log for details.",
+                    "Copied {1} into {2}, but {0:N0} files couldn’t be copied. Open the log for details.",
+                    copied, job.title
+                )
             )
         }
     }
@@ -470,7 +480,10 @@ final class AppModel: ObservableObject {
                 log.write("Opened \(photos) in \(app.title): " + folders.map(\.path).joined(separator: ", "))
             case .notInstalled:
                 log.write("\(app.title) isn’t installed, so the \(photos) weren’t opened in it.")
-                notify("\(app.title) not found", "Notch couldn’t find \(app.title) on this Mac, so the new photos weren’t opened in it. You can choose another app in Settings.")
+                notify(
+                    String(localized: "\(app.title) not found"),
+                    String(localized: "Notch couldn’t find \(app.title) on this Mac, so the new photos weren’t opened in it. You can choose another app in Settings.")
+                )
             case .failed(let message):
                 log.write("Couldn’t open the \(photos) in \(app.title): \(message)")
             }
@@ -482,10 +495,10 @@ final class AppModel: ObservableObject {
         let message: String
         if error is CancellationError {
             outcome = .cancelled
-            message = stopReason ?? "Cancelled. Files copied so far were kept."
+            message = stopReason ?? String(localized: "Cancelled. Files copied so far were kept.")
         } else if (error as? BackupError) == .sourceDisappeared {
             outcome = .failed
-            message = "The card was removed before the import finished. Insert it again to finish."
+            message = String(localized: "The card was removed before the import finished. Insert it again to finish.")
         } else {
             outcome = .failed
             message = error.localizedDescription
@@ -493,7 +506,7 @@ final class AppModel: ObservableObject {
 
         log.write("Import of “\(job.volume.name)” into \(job.title) stopped: \(message)")
         record(outcome, title: job.title, volume: job.volume, result: nil, folder: job.primaryFolder, message: message)
-        notify(outcome == .cancelled ? "Import stopped" : "Import failed", message)
+        notify(outcome == .cancelled ? String(localized: "Import stopped") : String(localized: "Import failed"), message)
     }
 
     // MARK: - History
@@ -561,12 +574,12 @@ final class AppModel: ObservableObject {
                 do {
                     try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
                     if announce {
-                        self.notify("“\(volume.name)” ejected", "It’s safe to remove the card.")
+                        self.notify(String(localized: "“\(volume.name)” ejected"), String(localized: "It’s safe to remove the card."))
                     }
                     return
                 } catch {
                     if attempt == 3 {
-                        self.notify("Couldn’t eject “\(volume.name)”", error.localizedDescription)
+                        self.notify(String(localized: "Couldn’t eject “\(volume.name)”"), error.localizedDescription)
                         return
                     }
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -601,9 +614,9 @@ final class AppModel: ObservableObject {
 
     func chooseDestination() {
         let panel = NSOpenPanel()
-        panel.title = "Choose Projects Folder"
-        panel.message = "Year folders (2026, 2027, …) with your projects inside are created here."
-        panel.prompt = "Choose"
+        panel.title = String(localized: "Choose Projects Folder")
+        panel.message = String(localized: "Year folders (2026, 2027, …) with your projects inside are created here.")
+        panel.prompt = String(localized: "Choose")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -619,9 +632,9 @@ final class AppModel: ObservableObject {
     /// Settings › Videos: a separate projects folder for videos. New projects put their videos there.
     func chooseVideosFolder() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a Folder for Videos"
-        panel.message = "Videos of new projects go here, in the same folder structure as the photos."
-        panel.prompt = "Choose"
+        panel.title = String(localized: "Choose a Folder for Videos")
+        panel.message = String(localized: "Videos of new projects go here, with their own folder structure.")
+        panel.prompt = String(localized: "Choose")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -676,10 +689,10 @@ final class AppModel: ObservableObject {
 
     func forgetImportedFiles() {
         let alert = NSAlert()
-        alert.messageText = "Forget which files were imported?"
-        alert.informativeText = "Every file on every card will be offered for import again. Files that are already in a project folder are still skipped when you pick the same project."
-        alert.addButton(withTitle: "Cancel")
-        alert.addButton(withTitle: "Forget")
+        alert.messageText = String(localized: "Forget which files were imported?")
+        alert.informativeText = String(localized: "Every file on every card will be offered for import again. Files that are already in a project folder are still skipped when you pick the same project.")
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.addButton(withTitle: String(localized: "Forget"))
         AppActivation.bringToFront()
         guard alert.runModal() == .alertSecondButtonReturn else { return }
         library.forgetImports()
@@ -690,24 +703,40 @@ final class AppModel: ObservableObject {
     }
 
     func quit() {
-        if isBusy {
-            let alert = NSAlert()
-            if migration != nil {
-                alert.messageText = "A year is being moved"
-                alert.informativeText = "If you quit now, files already moved stay on the drive and the rest stay on this Mac. Move the year again to finish."
-            } else {
-                alert.messageText = active != nil ? "An import is in progress" : "A card is being read"
-                alert.informativeText = "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted."
-            }
-            alert.addButton(withTitle: "Keep Going")
-            alert.addButton(withTitle: "Quit")
-            AppActivation.bringToFront()
-            guard alert.runModal() == .alertSecondButtonReturn else { return }
-            copyTask?.cancel()
-            analysisTask?.cancel()
-            migrationTask?.cancel()
-        }
+        guard confirmLeaving(restart: false) else { return }
         NSApp.terminate(nil)
+    }
+
+    /// Settings › Language: starts Notch again (with Settings open), in the chosen language.
+    func restart() {
+        guard confirmLeaving(restart: true) else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        configuration.arguments = ["--settings"]
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+        }
+    }
+
+    /// Asks first while a card is being read or imported or a year moved, and stops that work.
+    private func confirmLeaving(restart: Bool) -> Bool {
+        guard isBusy else { return true }
+        let alert = NSAlert()
+        if migration != nil {
+            alert.messageText = String(localized: "A year is being moved")
+            alert.informativeText = String(localized: "If you quit now, files already moved stay on the drive and the rest stay on this Mac. Move the year again to finish.")
+        } else {
+            alert.messageText = active != nil ? String(localized: "An import is in progress") : String(localized: "A card is being read")
+            alert.informativeText = String(localized: "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted.")
+        }
+        alert.addButton(withTitle: String(localized: "Keep Going"))
+        alert.addButton(withTitle: restart ? String(localized: "Restart") : String(localized: "Quit"))
+        AppActivation.bringToFront()
+        guard alert.runModal() == .alertSecondButtonReturn else { return false }
+        copyTask?.cancel()
+        analysisTask?.cancel()
+        migrationTask?.cancel()
+        return true
     }
 
     // MARK: - Moving a year to another drive
@@ -773,14 +802,14 @@ final class AppModel: ObservableObject {
         guard migration == nil else { return }
         let yearText = String(year)
         guard active == nil, importQueue.isEmpty else {
-            showAlert("Wait for the import to finish", "\(yearText) can be moved once the current import is done.")
+            showAlert(String(localized: "Wait for the import to finish"), String(localized: "\(yearText) can be moved once the current import is done."))
             return
         }
 
         let panel = NSOpenPanel()
-        panel.title = "Move \(yearText) to Another Drive"
-        panel.message = "Choose a folder on the drive, for example a Projects folder on your SSD. \(yearText) is moved into it with the same folder structure."
-        panel.prompt = "Move Here"
+        panel.title = String(localized: "Move \(yearText) to Another Drive")
+        panel.message = String(localized: "Choose a folder on the drive, for example a Projects folder on your SSD. \(yearText) is moved into it with the same folder structure.")
+        panel.prompt = String(localized: "Move Here")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
@@ -791,7 +820,7 @@ final class AppModel: ObservableObject {
 
         let sourceRoot = yearsRoot(source)
         if destinationRoot.standardizedFileURL.path == sourceRoot.standardizedFileURL.path {
-            showAlert("Choose another folder", "\(yearText) is already in that folder. Pick a folder on the other drive.")
+            showAlert(String(localized: "Choose another folder"), String(localized: "\(yearText) is already in that folder. Pick a folder on the other drive."))
             return
         }
 
@@ -801,16 +830,12 @@ final class AppModel: ObservableObject {
         let origin = (sourceRoot.appendingPathComponent(yearText).path as NSString).abbreviatingWithTildeInPath
         let confirm = NSAlert()
         confirm.alertStyle = .warning
-        confirm.messageText = "Move \(yearText) to “\(driveName)”?"
-        confirm.informativeText = """
-        Everything in \(origin), including photos, videos and editing projects, is copied to \(target). \
-        Each file is checked against the original and then deleted from this Mac.
-
-        Projects from \(yearText) will open from “\(driveName)” from now on. New projects still go to this Mac. \
-        Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.
-        """
-        confirm.addButton(withTitle: "Move")
-        confirm.addButton(withTitle: "Cancel")
+        confirm.messageText = String(localized: "Move \(yearText) to “\(driveName)”?")
+        confirm.informativeText = String(localized: "Everything in \(origin), including photos, videos and editing projects, is copied to \(target). Each file is checked against the original and then deleted from this Mac.")
+            + "\n\n"
+            + String(localized: "Projects from \(yearText) will open from “\(driveName)” from now on. New projects still go to this Mac. Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.")
+        confirm.addButton(withTitle: String(localized: "Move"))
+        confirm.addButton(withTitle: String(localized: "Cancel"))
         AppActivation.bringToFront()
         guard confirm.runModal() == .alertFirstButtonReturn else { return }
 
@@ -819,7 +844,7 @@ final class AppModel: ObservableObject {
     }
 
     func cancelMigration() {
-        migrationStopReason = "Stopped. Files already moved are on the drive and the rest are still on this Mac. Move the year again to finish."
+        migrationStopReason = String(localized: "Stopped. Files already moved are on the drive and the rest are still on this Mac. Move the year again to finish.")
         migrationTask?.cancel()
     }
 
@@ -829,7 +854,7 @@ final class AppModel: ObservableObject {
         migration = current
         migrationStopReason = nil
         log.write("Moving \(current.yearText) from \(sourceRoot.path) to \(destinationRoot.path)")
-        notify("Moving \(current.yearText) to “\(driveName)”", "Keep the drive connected until it’s finished.")
+        notify(String(localized: "Moving \(current.yearText) to “\(driveName)”"), String(localized: "Keep the drive connected until it’s finished."))
 
         migrationTask = Task.detached(priority: .userInitiated) { [self] in
             let activity = ProcessInfo.processInfo.beginActivity(
@@ -880,22 +905,23 @@ final class AppModel: ObservableObject {
             log.write(lines)
             recordMigration(result.isComplete ? .completed : .completedWithErrors, finished, result: result)
             if result.isComplete {
-                notify("\(year) moved to “\(finished.driveName)”", "Moved \(moved). Projects from \(year) now open from the drive.")
+                notify(String(localized: "\(year) moved to “\(finished.driveName)”"), String(localized: "Moved \(moved). Projects from \(year) now open from the drive."))
             } else {
                 let stayed = result.failures.count + result.itemsLeftBehind
                 notify(
-                    "\(year) moved, with exceptions",
-                    "Moved \(moved). \(Format.count(stayed, "item")) stayed on this Mac. Open the log for details."
+                    String(localized: "\(year) moved, with exceptions"),
+                    String(localized: "Moved \(moved).") + " "
+                        + Plural.text(stayed, "{0:N0} item stayed on this Mac. Open the log for details.", "{0:N0} items stayed on this Mac. Open the log for details.")
                 )
             }
         case .failure(let error):
             let cancelled = error is CancellationError
             let message = cancelled
-                ? migrationStopReason ?? "Stopped. Move the year again to finish."
+                ? migrationStopReason ?? String(localized: "Stopped. Move the year again to finish.")
                 : error.localizedDescription
             log.write("Moving \(year) stopped: \(message)")
             recordMigration(cancelled ? .cancelled : .failed, finished, result: nil, message: message)
-            notify(cancelled ? "Move stopped" : "Couldn’t move \(year)", message)
+            notify(cancelled ? String(localized: "Move stopped") : String(localized: "Couldn’t move \(year)"), message)
         }
         migrationStopReason = nil
         startNextImport()
@@ -903,7 +929,7 @@ final class AppModel: ObservableObject {
 
     private func recordMigration(_ outcome: HistoryEntry.Outcome, _ migration: ActiveMigration, result: MigrationResult?, message: String? = nil) {
         appendHistory(HistoryEntry(
-            title: "Moved \(migration.yearText)",
+            title: String(localized: "Moved \(migration.yearText)"),
             cardName: migration.driveName,
             cardID: "",
             date: Date(),

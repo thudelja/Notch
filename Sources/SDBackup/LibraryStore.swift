@@ -72,6 +72,9 @@ final class LibraryStore {
     @discardableResult
     func library(at root: URL) -> UUID? {
         let root = root.standardizedFileURL
+        // A new projects folder keeps the folder names it starts with, whatever language Notch shows later.
+        let defaults = FolderStructure.defaultFor(language: AppLanguage.current)
+        let named = Self.isEmptyFolder(root) && defaults != .standard ? defaults : nil
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
         if !fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory) {
@@ -89,7 +92,7 @@ final class LibraryStore {
         } else {
             // A folder this Mac already knew (from before manifests existed) keeps its ID.
             let knownID = locations.values.first { $0.lastKnownPath == root.path }?.libraryID ?? UUID()
-            let fresh = LibraryManifest(libraryID: knownID, projects: projects.filter { $0.libraryID == knownID })
+            let fresh = LibraryManifest(libraryID: knownID, projects: projects.filter { $0.libraryID == knownID }, structure: named, videoStructure: named)
             guard (try? fresh.write(to: root)) != nil else { return nil }
             manifest = fresh
         }
@@ -146,11 +149,22 @@ final class LibraryStore {
 
     /// The folder structure new projects' photos or videos in the projects folder at `root` get.
     func structure(_ branch: FolderStructure.Branch, at root: URL) -> FolderStructure {
-        let manifest = LibraryManifest.read(from: root.standardizedFileURL)
-        switch branch {
-        case .photo: return manifest?.layout ?? .standard
-        case .video: return manifest?.videoLayout ?? .standard
+        let root = root.standardizedFileURL
+        guard let manifest = LibraryManifest.read(from: root) else {
+            return Self.isEmptyFolder(root) ? .defaultFor(language: AppLanguage.current) : .standard
         }
+        switch branch {
+        case .photo: return manifest.layout
+        case .video: return manifest.videoLayout
+        }
+    }
+
+    /// A folder that doesn't exist yet or holds nothing (apart from hidden files). Notch hasn't used it, and nothing in it
+    /// has English folder names, so it gets folder names in Notch's language.
+    private static func isEmptyFolder(_ root: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: root.path) else { return true }
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return false }
+        return !names.contains { !$0.hasPrefix(".") && $0 != "Icon\r" }
     }
 
     /// Saves the folder structure new projects' photos or videos in the projects folder at `root`

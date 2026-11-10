@@ -141,7 +141,9 @@ struct FolderStructureView: View {
             Divider()
             HStack {
                 Button(tab == .photo ? String(localized: "Reset Photos to Standard") : String(localized: "Reset Videos to Standard")) {
-                    current.reset(to: separateFolders ? FolderStructure.standard.withoutMediaType : .standard)
+                    // The standard structure, with folder names in Notch's language.
+                    let standard = FolderStructure.defaultFor(language: AppLanguage.current)
+                    current.reset(to: separateFolders ? standard.withoutMediaType : standard)
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -189,8 +191,8 @@ private struct StructurePane: View {
                 Text("Folders, from the top")
             } footer: {
                 Text(draft.branch == .photo
-                     ? "New projects’ photos get this structure. Existing projects keep their folders."
-                     : "New projects’ videos get this structure. Existing projects keep their folders.")
+                     ? String(localized: "New projects’ photos get this structure. Existing projects keep their folders.")
+                     : String(localized: "New projects’ videos get this structure. Existing projects keep their folders."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -271,12 +273,12 @@ private struct StructurePane: View {
     private var addMenu: some View {
         let used = Set(draft.levels.map(\.level.kind))
         return Menu("Add a Level") {
-            Button(draft.branch == .photo ? String(localized: "Photo Folder") : String(localized: "Video Folder")) { draft.add(.mediaType()) }
+            Button(draft.branch == .photo ? String(localized: "Photo Folder") : String(localized: "Video Folder")) { draft.add(.newMediaType()) }
                 .disabled(used.contains(.mediaType))
-            Button("Month") { draft.add(.month()) }
+            Button("Month") { draft.add(.newMonth()) }
                 .disabled(used.contains(.month))
-            Button("Folder with a Fixed Name") { draft.add(.folder(String(localized: "Folder"))) }
-            Button("Unedited / Exported") { draft.add(.split()) }
+            Button("Folder with a Fixed Name") { draft.add(.newFolder()) }
+            Button("Unedited / Exported") { draft.add(.newSplit()) }
                 .disabled(used.contains(.split))
         }
         .fixedSize()
@@ -340,8 +342,8 @@ private struct LevelRow: View {
                 field(String(localized: "Video"), \.video)
             }
             Text(separateFolders
-                 ? "Left out: photos and videos go to different folders."
-                 : "Keeps photos and videos apart in the same folder.")
+                 ? String(localized: "Left out: photos and videos go to different folders.")
+                 : String(localized: "Keeps photos and videos apart in the same folder."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
