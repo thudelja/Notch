@@ -67,22 +67,24 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
         if kind == .migration {
             switch outcome {
             case .completed:
-                return "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · to \(cardName)"
+                return String(localized: "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · to \(cardName)")
             case .completedWithErrors:
-                return "\(Format.count(filesCopied, "file")) moved to \(cardName) · \(failedFiles) stayed on this Mac"
+                return Plural.text(filesCopied, "{0:N0} file moved to {1}", "{0:N0} files moved to {1}", cardName) + " · "
+                    + Plural.text(failedFiles, "{0:N0} stayed on this Mac", "{0:N0} stayed on this Mac")
             case .failed, .cancelled:
-                return message ?? "Move stopped"
+                return message ?? String(localized: "Move stopped")
             }
         }
         switch outcome {
         case .completed:
             return filesCopied == 0
-                ? "Already there · from \(cardName)"
-                : "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · from \(cardName)"
+                ? String(localized: "Already there · from \(cardName)")
+                : String(localized: "\(Format.count(filesCopied, "file")) · \(Format.bytes(bytesCopied)) · from \(cardName)")
         case .completedWithErrors:
-            return "\(Format.count(filesCopied, "file")) copied · \(failedFiles) couldn’t be copied"
+            return Plural.text(filesCopied, "{0:N0} file copied", "{0:N0} files copied") + " · "
+                + Plural.text(failedFiles, "{0:N0} couldn’t be copied", "{0:N0} couldn’t be copied")
         case .failed, .cancelled:
-            return message ?? "Import stopped"
+            return message ?? String(localized: "Import stopped")
         }
     }
 }
@@ -92,8 +94,9 @@ enum Format {
         ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
+    /// "1 photo", "1,234 photos": the noun in Notch's language and its form for the number (see `Plural`).
     static func count(_ number: Int, _ singular: String, _ plural: String? = nil) -> String {
-        "\(number.formatted()) \(number == 1 ? singular : (plural ?? singular + "s"))"
+        "\(number.formatted()) \(Plural.noun(number, singular, plural ?? singular + "s"))"
     }
 
     /// Time left, from the copy speed so far.
@@ -111,5 +114,52 @@ enum Format {
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 2
         return formatter.string(from: max(1, seconds)) ?? ""
+    }
+}
+
+/// Texts about a count, translated as in the Windows version: Localizable.strings has "photo|photos" (or a whole text,
+/// "{0:N0} file copied|{0:N0} files copied") with Slovenian's four forms, for 1, 2, 3–4 and 5 or more (101 like 1, 102 like
+/// 2…): "fotografija|fotografiji|fotografije|fotografij". English uses the singular for 1 and the plural otherwise.
+enum Plural {
+    /// The noun for `number`: "photo" or "photos" in English.
+    static func noun(_ number: Int, _ singular: String, _ plural: String) -> String {
+        form(number, singular, plural)
+    }
+
+    /// A text about a count, like "{0} minutes ago": {0} is the count (`{0:N0}` with thousands separators), {1}… the
+    /// other values.
+    static func text(_ number: Int, _ singular: String, _ plural: String, _ values: String...) -> String {
+        fill(form(number, singular, plural), [number.formatted()] + values)
+    }
+
+    private static func form(_ number: Int, _ singular: String, _ plural: String) -> String {
+        let key = singular + "|" + plural
+        let translated = Bundle.main.localizedString(forKey: key, value: nil, table: nil)
+        let forms = translated.components(separatedBy: "|")
+        guard translated != key, forms.count == 4 else { return number == 1 ? singular : plural }
+        let rest = abs(number) % 100
+        return forms[rest == 1 ? 0 : rest == 2 ? 1 : (rest == 3 || rest == 4) ? 2 : 3]
+    }
+
+    /// Replaces {0}, {0:N0}, {1}… in one pass, so a value that contains braces stays as it is.
+    static func fill(_ text: String, _ values: [String]) -> String {
+        var result = ""
+        var rest = Substring(text)
+        while let open = rest.firstIndex(of: "{") {
+            result += rest[..<open]
+            let tail = rest[rest.index(after: open)...]
+            guard let close = tail.firstIndex(of: "}"),
+                  let index = Int(tail[..<close].prefix { $0.isNumber }),
+                  tail[..<close].allSatisfy({ $0.isNumber || $0 == ":" || $0 == "N" }),
+                  values.indices.contains(index)
+            else {
+                result += "{"
+                rest = tail
+                continue
+            }
+            result += values[index]
+            rest = tail[tail.index(after: close)...]
+        }
+        return result + rest
     }
 }

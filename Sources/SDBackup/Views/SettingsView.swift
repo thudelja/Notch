@@ -5,9 +5,11 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var settings: AppSettings
+    @EnvironmentObject private var shoots: MultiDayShootStore
     @State private var years: [Int] = []
     @State private var selectedYear = 0
-    @State private var structure: FolderStructure = .standard
+    @State private var photoStructure: FolderStructure = .standard
+    @State private var videoStructure: FolderStructure = .standard
     @State private var editingStructure = false
     @State private var yearSource: AppModel.YearSource = .photos
 
@@ -31,7 +33,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 20)
                     Text("Videos")
-                    Text(settings.abbreviatedVideos ?? "Same as photos")
+                    Text(settings.abbreviatedVideos ?? String(localized: "Same as photos"))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -48,16 +50,49 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Button("Folder Structure…") {
-                        structure = model.folderStructure()
+                        reloadStructures()
                         editingStructure = true
                     }
+                }
+            }
+
+            Section("Multi-day shoots") {
+                if shoots.all.isEmpty {
+                    Text("A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(shoots.all.sorted { $0.lastUsed > $1.lastUsed }) { shoot in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(verbatim: shoot.name)
+                                Text(shootStatus(shoot))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if shoot.isOpen {
+                                HoldToFinishButton(title: String(localized: "Hold to finish"), doneTitle: String(localized: "Finished")) {
+                                    model.finishShoot(shoot.id)
+                                }
+                                .id(shoot.id)
+                            } else {
+                                Button("Reopen") { model.reopenShoot(shoot.id) }
+                            }
+                        }
+                    }
+                    Text("Open shoots appear in the import panel as “New in …”. A shoot not used for 100 days leaves the panel; reopen it here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             Section("Move a year to another drive") {
                 if let migration = model.migration {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(verbatim: "Moving \(migration.yearText) to “\(migration.driveName)”…")
+                        Text(verbatim: String(localized: "Moving \(migration.yearText) to “\(migration.driveName)”…"))
                         ProgressView(value: migration.progress.phase == .copying ? migration.progress.fractionCompleted : nil)
                         Button("Stop") { model.cancelMigration() }
                     }
@@ -71,8 +106,8 @@ struct SettingsView: View {
                     }
                     if years.isEmpty {
                         Text(verbatim: yearSource == .videos && settings.videosURL != nil
-                            ? "There are no year folders in the videos folder yet."
-                            : "There are no year folders in the projects folder yet.")
+                            ? String(localized: "There are no year folders in the videos folder yet.")
+                            : String(localized: "There are no year folders in the projects folder yet."))
                             .foregroundStyle(.secondary)
                     } else {
                         HStack {
@@ -132,6 +167,22 @@ struct SettingsView: View {
             }
 
             Section("General") {
+                Picker("Language", selection: $settings.language) {
+                    Text("Same as the Mac").tag("")
+                    // Each language in its own language, so it can be found by those who read it.
+                    Text(verbatim: "English").tag(AppLanguage.english)
+                    Text(verbatim: "Slovenščina").tag(AppLanguage.slovenian)
+                }
+                if settings.languageNeedsRestart {
+                    HStack {
+                        Text("Notch switches to the new language when it starts again.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Restart Now") { model.restart() }
+                    }
+                }
                 Toggle("Open at login", isOn: $model.launchAtLogin)
                 Toggle("Show notifications", isOn: $settings.notificationsEnabled)
                 HStack {
@@ -172,9 +223,9 @@ struct SettingsView: View {
         .onChange(of: yearSource) { _ in reloadYears() }
         .onAppear { reloadYears() }
         .sheet(isPresented: $editingStructure) {
-            FolderStructureView(structure: structure) { edited in
-                guard model.saveFolderStructure(edited) else { return false }
-                structure = model.folderStructure()
+            FolderStructureView(photo: photoStructure, video: videoStructure, separateFolders: model.hasSeparateFolders) { photo, video in
+                guard model.saveFolderStructures(photo: photo, video: video) else { return false }
+                reloadStructures()
                 return true
             }
         }
@@ -183,20 +234,38 @@ struct SettingsView: View {
     /// "Notch 1.2.0"; builds that aren't releases are "0.0.0-dev".
     static var versionText: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-        return version.isEmpty || version.hasPrefix("0.0.0") ? "Notch (test build)" : "Notch \(version)"
+        return version.isEmpty || version.hasPrefix("0.0.0") ? String(localized: "Notch (test build)") : "Notch \(version)"
     }
 
-    /// The structure's example paths, and where videos go when they have their own folder.
+    /// Where a new project's photo and video go, as example paths.
     private var structureCaption: String {
-        var lines = structure.summary
+        let separate = model.hasSeparateFolders
+        let photo = separate ? photoStructure.withoutMediaType : photoStructure
+        let video = separate ? videoStructure.withoutMediaType : videoStructure
+        var lines = [
+            String(localized: "Photos: \(photo.examplePath(.photo).joined(separator: " › "))"),
+            String(localized: "Videos: \(video.examplePath(.video).joined(separator: " › "))"),
+        ]
         if let videos = settings.abbreviatedVideos {
-            lines.append("Videos are saved in \(videos), in the same structure.")
+            lines.append(String(localized: "Videos are saved in \(videos). Photo and Video folders are left out because photos and videos go to different folders."))
         }
         return lines.joined(separator: "\n")
     }
 
+    private func shootStatus(_ shoot: MultiDayShoot) -> String {
+        let used = shoot.lastUsed.formatted(date: .abbreviated, time: .omitted)
+        if shoot.finished { return String(localized: "Finished · last used \(used)") }
+        if !shoot.isOpen { return String(localized: "Not used for 100 days · last used \(used)") }
+        return String(localized: "Open · last used \(used)")
+    }
+
+    private func reloadStructures() {
+        photoStructure = model.folderStructure(.photo)
+        videoStructure = model.folderStructure(.video)
+    }
+
     private func reloadYears() {
-        structure = model.folderStructure()
+        reloadStructures()
         years = model.availableYears(in: settings.videosURL == nil ? .photos : yearSource)
         if !years.contains(selectedYear), let oldest = years.first {
             selectedYear = oldest
@@ -215,8 +284,9 @@ final class SettingsWindowController {
             let view = SettingsView()
                 .environmentObject(model)
                 .environmentObject(model.settings)
+                .environmentObject(model.library.shoots)
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "Notch Settings"
+            window.title = String(localized: "Notch Settings")
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()

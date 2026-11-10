@@ -1,4 +1,4 @@
-; The Notch installer for Windows 10 and 11 (Inno Setup 6.3 or later: https://jrsoftware.org/isinfo.php).
+﻿; The Notch installer for Windows 10 and 11 (Inno Setup 6.3 or later: https://jrsoftware.org/isinfo.php).
 ;
 ; Installs for the current user only (no administrator rights), into %LOCALAPPDATA%\Programs\Notch, with a
 ; Start menu entry and an entry in Settings > Apps for uninstalling. One installer covers both kinds of PC: it
@@ -7,7 +7,7 @@
 ; CI builds it on every push; to build it yourself, publish both apps first (see .github/workflows/build.yml),
 ; then run from the windows folder:
 ;   "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" /DVersion=1.0.0 installer\Notch.iss
-; The result is dist\Notch-Setup.exe.
+; The result is dist\Notch-Setup.exe. It speaks English or Slovenian, following the language of Windows.
 
 #ifndef Version
   #define Version "1.0.0"
@@ -49,6 +49,12 @@ SolidCompression=yes
 ; (App.xaml.cs) and asks you to quit it. The Restart Manager can't close a notification-area app.
 AppMutex=Local\Notch.SingleInstance
 CloseApplications=no
+; English or Slovenian, as Windows is set; other languages get English without asking.
+ShowLanguageDialog=auto
+
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "sl"; MessagesFile: "compiler:Languages\Slovenian.isl"
 
 [Files]
 Source: "..\dist\win-x64\Notch.exe"; DestDir: "{app}"; Flags: ignoreversion; Check: not IsArm64
@@ -62,12 +68,18 @@ Name: "{autoprograms}\Notch"; Filename: "{app}\Notch.exe"
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Notch"; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\Notch.exe"; Description: "Start Notch"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\Notch.exe"; Description: "{cm:StartNotch}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; Settings, projects and import records in %APPDATA%\Notch are kept, so reinstalling picks up where you left off.
 Type: dirifempty; Name: "{app}"
 
+[CustomMessages]
+en.StartNotch=Start Notch
+sl.StartNotch=Zaženi Notch
+
 [Messages]
-SetupAppRunningError=Notch is running. Quit it first: right-click the Notch icon next to the clock and choose Quit Notch. Then click OK.
-UninstallAppRunningError=Notch is running. Quit it first: right-click the Notch icon next to the clock and choose Quit Notch. Then click OK.
+en.SetupAppRunningError=Notch is running. Quit it first: right-click the Notch icon next to the clock and choose Quit Notch. Then click OK.
+en.UninstallAppRunningError=Notch is running. Quit it first: right-click the Notch icon next to the clock and choose Quit Notch. Then click OK.
+sl.SetupAppRunningError=Notch se izvaja. Najprej ga zaprite: z desno tipko miške kliknite ikono Notch ob uri in izberite Zapri Notch. Nato kliknite V redu.
+sl.UninstallAppRunningError=Notch se izvaja. Najprej ga zaprite: z desno tipko miške kliknite ikono Notch ob uri in izberite Zapri Notch. Nato kliknite V redu.

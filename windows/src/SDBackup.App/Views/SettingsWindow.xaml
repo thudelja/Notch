@@ -1,7 +1,9 @@
 <Window x:Class="SDBackup.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Notch Settings"
+        xmlns:l="clr-namespace:SDBackup.App"
+        xmlns:local="clr-namespace:SDBackup.App"
+        Title="{l:T 'Notch Settings'}"
         Width="580"
         Height="760"
         MinWidth="480"
@@ -15,52 +17,85 @@
     <!-- DataContext: SDBackup.Windows.AppModel. -->
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20,16,20,20">
-            <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,16" />
+            <TextBlock Text="{l:T 'Settings'}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,16" />
 
             <!-- ============================================================ Projects folder -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="Projects folder" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Projects folder'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <DockPanel>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Change…" Margin="12,0,0,0"
-                                AutomationProperties.Name="Change the photos folder" Command="{Binding ChangeProjectsFolderCommand}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Change…'}" Margin="12,0,0,0"
+                                AutomationProperties.Name="{l:T 'Change the photos folder'}" Command="{Binding ChangeProjectsFolderCommand}" />
                         <TextBlock Style="{StaticResource IconText}" Text="&#xE91B;" Margin="0,0,10,0" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Style="{StaticResource BodyText}" Text="Photos" Width="56" VerticalAlignment="Center" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Photos'}" Width="56" VerticalAlignment="Center" />
                         <TextBlock Style="{StaticResource BodyText}" VerticalAlignment="Center" TextWrapping="NoWrap"
                                    TextTrimming="CharacterEllipsis" Text="{Binding Settings.ProjectsFolder}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    ToolTip="{Binding Settings.ProjectsFolder}" />
                     </DockPanel>
                     <DockPanel Margin="0,8,0,0">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Change…" Margin="8,0,0,0"
-                                AutomationProperties.Name="Change the videos folder" Command="{Binding ChangeVideosFolderCommand}" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Same as photos" Margin="12,0,0,0"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Change…'}" Margin="8,0,0,0"
+                                AutomationProperties.Name="{l:T 'Change the videos folder'}" Command="{Binding ChangeVideosFolderCommand}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Same as photos'}" Margin="12,0,0,0"
                                 Visibility="{Binding Settings.HasSeparateVideosFolder, Converter={StaticResource BoolToVisible}}"
                                 Command="{Binding KeepVideosWithPhotosCommand}" />
                         <TextBlock Style="{StaticResource IconText}" Text="&#xE714;" Margin="0,0,10,0" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBlock Style="{StaticResource BodyText}" Text="Videos" Width="56" VerticalAlignment="Center" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Videos'}" Width="56" VerticalAlignment="Center" />
                         <TextBlock Style="{StaticResource BodyText}" VerticalAlignment="Center" TextWrapping="NoWrap"
                                    TextTrimming="CharacterEllipsis" Text="{Binding Settings.VideosFolderText}"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    ToolTip="{Binding Settings.VideosFolderText}" />
                     </DockPanel>
                     <DockPanel Margin="0,10,0,0">
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Folder structure…" Margin="12,0,0,0"
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Folder structure…'}" Margin="12,0,0,0"
                                 VerticalAlignment="Top" Click="EditFolderStructure_Click" />
                         <TextBlock Style="{StaticResource WrappedCaptionText}" Text="{Binding FolderStructureSummary, Mode=OneWay}" />
                     </DockPanel>
                 </StackPanel>
             </Border>
 
+            <!-- ============================================================ Multi-day shoots -->
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Multi-day shoots'}" />
+            <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource WrappedCaptionText}"
+                               Visibility="{Binding HasShoots, Converter={StaticResource BoolToCollapsed}}"
+                               Text="{l:T 'A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”.'}" />
+                    <ItemsControl ItemsSource="{Binding Shoots}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="0,0,0,10">
+                                    <Grid DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <local:HoldButton Padding="10,4" FontSize="12" Text="{Binding FinishTitle}"
+                                                          AutomationProperties.Name="{Binding FinishAccessibleName}" Command="{Binding FinishCommand}"
+                                                          Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisible}}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="{l:T 'Reopen'}"
+                                                AutomationProperties.Name="{Binding ReopenAccessibleName}" Command="{Binding ReopenCommand}"
+                                                Visibility="{Binding IsClosed, Converter={StaticResource BoolToVisible}}" />
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource BodyText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                                        <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Status}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource WrappedCaptionText}"
+                               Visibility="{Binding HasShoots, Converter={StaticResource BoolToVisible}}"
+                               Text="{l:T 'Open shoots appear in the import panel as “New in …”. A shoot not used for 100 days leaves the panel; reopen it here.'}" />
+                </StackPanel>
+            </Border>
+
             <!-- ============================================================ Move a year -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="Move a year to another drive" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Move a year to another drive'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <StackPanel Visibility="{Binding IsMigrating, Converter={StaticResource BoolToVisible}}">
                         <DockPanel>
-                            <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Stop"
+                            <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Stop'}"
                                     Command="{Binding CancelMigrationCommand}" />
                             <StackPanel DataContext="{Binding MigrationStatus}">
                                 <TextBlock Style="{StaticResource TitleText}" Text="{Binding Title}" />
@@ -74,9 +109,9 @@
 
                     <StackPanel Visibility="{Binding IsMigrating, Converter={StaticResource BoolToCollapsed}}">
                         <DockPanel Margin="0,0,0,10" Visibility="{Binding Settings.HasSeparateVideosFolder, Converter={StaticResource BoolToVisible}}">
-                            <TextBlock Style="{StaticResource BodyText}" Text="From" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'From'}" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <ComboBox Style="{StaticResource PickerBox}" Width="160" HorizontalAlignment="Left" MinHeight="32"
-                                      AutomationProperties.Name="Move a year from"
+                                      AutomationProperties.Name="{l:T 'Move a year from'}"
                                       ItemsSource="{Binding YearSourceChoices}" SelectedValuePath="Value"
                                       SelectedValue="{Binding YearsFromVideos, Mode=TwoWay}">
                                 <ComboBox.ItemTemplate>
@@ -89,57 +124,57 @@
                         <TextBlock Style="{StaticResource CaptionText}" Text="{Binding NoYearsText}"
                                    Visibility="{Binding HasYears, Converter={StaticResource BoolToCollapsed}}" />
                         <DockPanel Visibility="{Binding HasYears, Converter={StaticResource BoolToVisible}}">
-                            <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Move to drive…"
+                            <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="{l:T 'Move to drive…'}"
                                     Command="{Binding MoveYearCommand}" />
-                            <TextBlock Style="{StaticResource BodyText}" Text="Year" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Year'}" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <ComboBox Style="{StaticResource PickerBox}" Width="110" HorizontalAlignment="Left" MinHeight="32"
                                       ItemsSource="{Binding Years}" SelectedItem="{Binding SelectedYear, Mode=TwoWay}" />
                         </DockPanel>
                     </StackPanel>
 
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,12,0,0"
-                               Text="Moves the whole year (photos, videos and editing projects) to a folder you choose, for example on your SSD, keeping the same structure. Each file is verified before it’s deleted from this PC. Moved projects keep working from the drive; new projects still go to this PC." />
+                               Text="{l:T 'Moves the whole year (photos, videos and editing projects) to a folder you choose, for example on your SSD, keeping the same structure. Each file is verified before it’s deleted from this PC. Moved projects keep working from the drive; new projects still go to this PC.'}" />
                 </StackPanel>
             </Border>
 
             <!-- ============================================================ Cards -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="Cards" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Cards'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Settings.AutoImport}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Ask for a project as soon as a card is inserted" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Ask for a project as soon as a card is inserted'}" />
                     </CheckBox>
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Settings.DetectAnyRemovable}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Also import from USB flash drives and other removable drives" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Also import from USB flash drives and other removable drives'}" />
                     </CheckBox>
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,4,0,0" Text="{Binding Settings.DetectionExplanation}" />
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,8,0,0"
-                               Text="Tip: to stop Windows' own AutoPlay prompt appearing too, set Memory card to “Take no action” in Settings › Bluetooth &amp; devices › AutoPlay." />
+                               Text="{l:T 'Tip: to stop Windows’ own AutoPlay prompt appearing too, set Memory card to “Take no action” in Settings › Bluetooth &amp; devices › AutoPlay.'}" />
                 </StackPanel>
             </Border>
 
             <!-- ============================================================ Safety -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="Safety" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Safety'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Settings.VerifyCopies}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Verify every copied file" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Verify every copied file'}" />
                     </CheckBox>
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,0,0,8"
-                               Text="Reads each copy back and compares its SHA-256 checksum with the original. Slightly slower, strongly recommended." />
+                               Text="{l:T 'Reads each copy back and compares its SHA-256 checksum with the original. Slightly slower, strongly recommended.'}" />
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Settings.EjectWhenDone}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Eject the card when the import finishes" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Eject the card when the import finishes'}" />
                     </CheckBox>
                 </StackPanel>
             </Border>
 
             <!-- ============================================================ After importing -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="After importing" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'After importing'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <DockPanel>
                         <ComboBox DockPanel.Dock="Right" Style="{StaticResource PickerBox}" Width="190"
-                                  AutomationProperties.Name="Open new photos in"
+                                  AutomationProperties.Name="{l:T 'Open new photos in'}"
                                   ItemsSource="{Binding Settings.PhotoAppChoices}"
                                   SelectedValuePath="Value"
                                   SelectedValue="{Binding Settings.PhotoApp, Mode=TwoWay}">
@@ -149,7 +184,7 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <TextBlock Style="{StaticResource BodyText}" Text="Open new photos in" VerticalAlignment="Center" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Open new photos in'}" VerticalAlignment="Center" />
                     </DockPanel>
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,8,0,0" Text="{Binding Settings.PhotoAppExplanation}" />
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,6,0,0" Foreground="{DynamicResource WarningBrush}"
@@ -159,32 +194,52 @@
             </Border>
 
             <!-- ============================================================ General -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="General" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'General'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
+                    <DockPanel Margin="0,0,0,10">
+                        <ComboBox DockPanel.Dock="Right" Style="{StaticResource PickerBox}" Width="190"
+                                  AutomationProperties.Name="{l:T 'Language'}"
+                                  ItemsSource="{Binding Settings.LanguageChoices}"
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding Settings.Language, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Title}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Language'}" VerticalAlignment="Center" />
+                    </DockPanel>
+                    <DockPanel Margin="0,0,0,10" Visibility="{Binding Settings.LanguageNeedsRestart, Converter={StaticResource BoolToVisible}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Restart now'}" Margin="12,0,0,0"
+                                VerticalAlignment="Center" Command="{Binding RestartCommand}" />
+                        <TextBlock Style="{StaticResource WrappedCaptionText}" VerticalAlignment="Center"
+                                   Text="{l:T 'Notch switches to the new language when it starts again.'}" />
+                    </DockPanel>
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding StartWithWindows}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Start with Windows" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Start with Windows'}" />
                     </CheckBox>
                     <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding Settings.NotificationsEnabled}">
-                        <TextBlock Style="{StaticResource BodyText}" Text="Show notifications" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Show notifications'}" />
                     </CheckBox>
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                        <Button Style="{StaticResource SubtleButton}" Content="Open log" Command="{Binding OpenLogCommand}" Margin="0,0,8,0" />
-                        <Button Style="{StaticResource SubtleButton}" Content="Clear recent" Command="{Binding ClearHistoryCommand}" />
+                        <Button Style="{StaticResource SubtleButton}" Content="{l:T 'Open log'}" Command="{Binding OpenLogCommand}" Margin="0,0,8,0" />
+                        <Button Style="{StaticResource SubtleButton}" Content="{l:T 'Clear recent'}" Command="{Binding ClearHistoryCommand}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <!-- ============================================================ Memory -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="Memory" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Memory'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,0">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal">
-                        <Button Style="{StaticResource SubtleButton}" Content="Forget imported files…" Command="{Binding ForgetImportedFilesCommand}" Margin="0,0,8,0" />
-                        <Button Style="{StaticResource SubtleButton}" Content="Forget camera names" Command="{Binding ForgetCameraNamesCommand}" />
+                        <Button Style="{StaticResource SubtleButton}" Content="{l:T 'Forget imported files…'}" Command="{Binding ForgetImportedFilesCommand}" Margin="0,0,8,0" />
+                        <Button Style="{StaticResource SubtleButton}" Content="{l:T 'Forget camera names'}" Command="{Binding ForgetCameraNamesCommand}" />
                     </StackPanel>
                     <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,10,0,0"
-                               Text="Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera." />
+                               Text="{l:T 'Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera.'}" />
                 </StackPanel>
             </Border>
 

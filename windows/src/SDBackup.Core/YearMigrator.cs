@@ -53,7 +53,7 @@ public static class YearMigrator
         var source = Path.Combine(PathUtil.Normalize(sourceRoot), yearText);
         var destination = Path.Combine(PathUtil.Normalize(destinationRoot), yearText);
 
-        if (!Directory.Exists(source)) throw BackupException.SourceUnreadable(source, $"There is no {yearText} folder.");
+        if (!Directory.Exists(source)) throw BackupException.SourceUnreadable(source, Loc.F("There is no {0} folder.", yearText));
         if (PathUtil.AreSame(source, destination) || PathUtil.IsInside(source, destination)) throw BackupException.DestinationIsSource();
         if (!Directory.Exists(destinationRoot)) throw BackupException.DestinationUnavailable(destinationRoot);
 
@@ -82,7 +82,7 @@ public static class YearMigrator
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                     deleteFailures.Add(new BackupFailure(done.Source.RelativePath,
-                        $"Copied and verified, but the original couldn’t be deleted: {error.Message}"));
+                        Loc.F("Copied and verified, but the original couldn’t be deleted: {0}", error.Message)));
                 }
             },
             progress: progress,

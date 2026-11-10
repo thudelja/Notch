@@ -37,6 +37,8 @@ final class LibraryStore {
     }
 
     private let directory: URL
+    /// Multi-day shoots, local to this Mac.
+    let shoots: MultiDayShootStore
     private(set) var projects: [ProjectInfo] = []
     private var locations: [UUID: LibraryLocation] = [:]
     /// Camera model → folder name, e.g. "Canon EOS R5" → "R5".
@@ -53,6 +55,7 @@ final class LibraryStore {
             withIntermediateDirectories: true
         )
         self.directory = directory
+        shoots = MultiDayShootStore(file: directory.appendingPathComponent("series.json"))
         modelAliases = UserDefaults.standard.dictionary(forKey: Key.modelAliases) as? [String: String] ?? [:]
         cardAliases = UserDefaults.standard.dictionary(forKey: Key.cardAliases) as? [String: String] ?? [:]
 
@@ -69,6 +72,9 @@ final class LibraryStore {
     @discardableResult
     func library(at root: URL) -> UUID? {
         let root = root.standardizedFileURL
+        // A new projects folder keeps the folder names it starts with, whatever language Notch shows later.
+        let defaults = FolderStructure.defaultFor(language: AppLanguage.current)
+        let named = Self.isEmptyFolder(root) && defaults != .standard ? defaults : nil
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
         if !fileManager.fileExists(atPath: root.path, isDirectory: &isDirectory) {
@@ -86,7 +92,7 @@ final class LibraryStore {
         } else {
             // A folder this Mac already knew (from before manifests existed) keeps its ID.
             let knownID = locations.values.first { $0.lastKnownPath == root.path }?.libraryID ?? UUID()
-            let fresh = LibraryManifest(libraryID: knownID, projects: projects.filter { $0.libraryID == knownID })
+            let fresh = LibraryManifest(libraryID: knownID, projects: projects.filter { $0.libraryID == knownID }, structure: named, videoStructure: named)
             guard (try? fresh.write(to: root)) != nil else { return nil }
             manifest = fresh
         }
@@ -141,19 +147,43 @@ final class LibraryStore {
 
     // MARK: - Folder structure
 
-    /// The folder structure new projects in the projects folder at `root` get.
-    func structure(at root: URL) -> FolderStructure {
-        LibraryManifest.read(from: root.standardizedFileURL)?.layout ?? .standard
+    /// The folder structure new projects' photos or videos in the projects folder at `root` get.
+    func structure(_ branch: FolderStructure.Branch, at root: URL) -> FolderStructure {
+        let root = root.standardizedFileURL
+        guard let manifest = LibraryManifest.read(from: root) else {
+            return Self.isEmptyFolder(root) ? .defaultFor(language: AppLanguage.current) : .standard
+        }
+        switch branch {
+        case .photo: return manifest.layout
+        case .video: return manifest.videoLayout
+        }
     }
 
-    /// Saves the folder structure new projects in the projects folder at `root` get. Existing
-    /// projects keep theirs. False when the folder isn't available.
-    func setStructure(_ structure: FolderStructure, at root: URL) -> Bool {
+    /// A folder that doesn't exist yet or holds nothing (apart from hidden files). Notch hasn't used it, and nothing in it
+    /// has English folder names, so it gets folder names in Notch's language.
+    private static func isEmptyFolder(_ root: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: root.path) else { return true }
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return false }
+        return !names.contains { !$0.hasPrefix(".") && $0 != "Icon\r" }
+    }
+
+    /// Saves the folder structure new projects' photos or videos in the projects folder at `root`
+    /// get. Existing projects keep theirs. False when the folder isn't available.
+    func setStructure(_ structure: FolderStructure, for branch: FolderStructure.Branch, at root: URL) -> Bool {
         let root = root.standardizedFileURL
         guard structure.isValid, let libraryID = library(at: root) else { return false }
         var manifest = LibraryManifest.read(from: root)
             ?? LibraryManifest(libraryID: libraryID, projects: projects.filter { $0.libraryID == libraryID })
-        manifest.structure = structure == .standard ? nil : structure
+        switch branch {
+        case .photo:
+            // A folder set up before 1.3 has one structure for both: the videos keep it.
+            if manifest.videoStructure == nil {
+                manifest.videoStructure = manifest.layout
+            }
+            manifest.structure = structure == .standard ? nil : structure
+        case .video:
+            manifest.videoStructure = structure
+        }
         return (try? manifest.write(to: root)) != nil
     }
 
@@ -167,55 +197,65 @@ final class LibraryStore {
         projects.first { $0.id == id }
     }
 
-    /// The existing project with this name and start day in the projects folder at `root`, or a
-    /// new one there, with its videos in `videosRoot` when that is a separate folder. Nil when a
-    /// folder isn't available.
-    func projectNamed(_ name: String, startDay: ShootDay, in root: URL, videosRoot: URL? = nil) -> ProjectInfo? {
-        guard let libraryID = library(at: root) else { return nil }
+    /// Where one kind of a new project's files goes.
+    struct Place: Equatable {
+        /// The projects folder whose structure lays it out.
+        var root: URL
+        /// A folder the user chose instead: the project folder is made inside it.
+        var chosenFolder: URL?
+    }
+
+    /// The existing project with this name and start day in these places, or a new one. Photos and
+    /// videos each follow their projects folder's structure, without the Photo / Video level when
+    /// they go to different folders; a project of a multi-day shoot (`series`) goes in the shoot's
+    /// folder. Nil when a folder isn't available and was never seen on this computer.
+    func newProject(_ name: String, startDay: ShootDay, series: String?, photos: Place, videos: Place) -> ProjectInfo? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rootPath = root.standardizedFileURL.path
+        var photoStructure = structure(.photo, at: photos.root)
+        var videoStructure = structure(.video, at: videos.root)
+        if photos.root.standardizedFileURL.path != videos.root.standardizedFileURL.path {
+            photoStructure = photoStructure.withoutMediaType
+            videoStructure = videoStructure.withoutMediaType
+        }
+        guard let photo = resolve(photos, projectFolderName: photoStructure.projectFolderName(name: trimmed, startDay: startDay)),
+              let video = resolve(videos, projectFolderName: videoStructure.projectFolderName(name: trimmed, startDay: startDay))
+        else { return nil }
+        let series = series?.trimmingCharacters(in: .whitespacesAndNewlines)
         if var existing = projects.first(where: {
-            $0.libraryID == libraryID && $0.folder == nil && $0.startDay == startDay
+            $0.libraryID == photo.id && $0.folder == photo.folder && $0.startDay == startDay
                 && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
+                && ($0.series ?? "").caseInsensitiveCompare(series ?? "") == .orderedSame
         }) {
-            existing.rootPath = rootPath
+            existing.rootPath = photo.path
             return existing
         }
-        var videoLibraryID: UUID?
-        var videoRootPath = ""
-        if let videosRoot, videosRoot.standardizedFileURL.path != rootPath {
-            // A videos folder on a drive that isn't connected is still recorded; its videos wait for it.
-            let path = videosRoot.standardizedFileURL.path
-            guard let id = library(at: videosRoot) ?? locations.values.first(where: { $0.lastKnownPath == path })?.libraryID
-            else { return nil }
-            videoLibraryID = id
-            videoRootPath = FileManager.default.fileExists(atPath: path) ? path : ""
-        }
-        // A new project follows the folder's current structure, and keeps it from then on.
-        let structure = LibraryManifest.read(from: root.standardizedFileURL)?.structure
         return ProjectInfo(
-            name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure,
-            videoLibraryID: videoLibraryID, rootPath: rootPath, videoRootPath: videoRootPath
+            name: trimmed, startDay: startDay, libraryID: photo.id, structure: photoStructure, folder: photo.folder,
+            videoLibraryID: video.id, videoStructure: videoStructure, videoFolder: video.folder, series: series,
+            rootPath: photo.path, videoRootPath: video.path
         )
     }
 
-    /// A project in `parent`, a folder the user chose: its folder is `parent/<date and name>`, named
-    /// by `structure`, and both photos and videos go into it. The project belongs to the nearest
-    /// projects folder at or above `parent` (so it moves with its year and is found again on another
-    /// computer); a folder outside every projects folder becomes one. Nil when it can't be written.
-    func projectNamed(_ name: String, startDay: ShootDay, inFolder parent: URL, structure: FolderStructure) -> ProjectInfo? {
-        let parent = parent.standardizedFileURL
-        guard let root = projectsFolder(containing: parent) ?? (library(at: parent) == nil ? nil : parent),
-              let libraryID = library(at: root)
-        else { return nil }
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let relative = Array(parent.pathComponents.dropFirst(root.pathComponents.count))
-        let folder = relative + [structure.projectFolderName(name: trimmed, startDay: startDay)]
-        if var existing = projects.first(where: { $0.libraryID == libraryID && $0.folder == folder }) {
-            existing.rootPath = root.path
-            return existing
+    /// The projects folder for a place, and the project folder's path in it for a chosen folder. A
+    /// chosen folder belongs to the nearest projects folder at or above it (so its projects move with
+    /// their year and are found on another computer); one outside every projects folder becomes one.
+    private func resolve(_ place: Place, projectFolderName: String) -> (id: UUID, path: String, folder: [String]?)? {
+        if let chosen = place.chosenFolder?.standardizedFileURL {
+            guard let root = projectsFolder(containing: chosen) ?? (library(at: chosen) == nil ? nil : chosen),
+                  let id = library(at: root)
+            else { return nil }
+            let relative = Array(chosen.pathComponents.dropFirst(root.pathComponents.count))
+            return (id, root.path, relative + [projectFolderName])
         }
-        return ProjectInfo(name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure, folder: folder, rootPath: root.path)
+        let root = place.root.standardizedFileURL
+        if let id = library(at: root) {
+            return (id, root.path, nil)
+        }
+        // A folder on a drive that isn't connected is still recorded; its files wait for it.
+        if let id = locations.values.first(where: { $0.lastKnownPath == root.path })?.libraryID {
+            return (id, "", nil)
+        }
+        return nil
     }
 
     /// The known project whose folder is `folder` (its photo or video project folder, or the folder
@@ -436,7 +476,8 @@ final class LibraryStore {
         let updated = LibraryManifest(
             libraryID: libraryID,
             projects: projects.filter { $0.libraryID == libraryID || ($0.hasSeparateVideoFolder && $0.videoLibraryID == libraryID) },
-            structure: existing?.structure
+            structure: existing?.structure,
+            videoStructure: existing?.videoStructure
         )
         if let existing, Self.encoded(existing) == Self.encoded(updated) { return }
         try? updated.write(to: root)

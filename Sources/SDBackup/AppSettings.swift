@@ -1,4 +1,5 @@
 import Foundation
+import SDBackupCore
 
 enum CardDetection: String, CaseIterable, Identifiable {
     case memoryCards
@@ -8,17 +9,17 @@ enum CardDetection: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .memoryCards: return "SD and camera cards"
-        case .anyRemovable: return "Any removable drive"
+        case .memoryCards: return String(localized: "SD and camera cards")
+        case .anyRemovable: return String(localized: "Any removable drive")
         }
     }
 
     var explanation: String {
         switch self {
         case .memoryCards:
-            return "Cards in the built-in SD slot or a card reader, plus any removable drive with a camera (DCIM) folder."
+            return String(localized: "Cards in the built-in SD slot or a card reader, plus any removable drive with a camera (DCIM) folder.")
         case .anyRemovable:
-            return "Also includes USB flash drives and other removable media. External hard drives and SSDs are never included."
+            return String(localized: "Also includes USB flash drives and other removable media. External hard drives and SSDs are never included.")
         }
     }
 }
@@ -36,6 +37,9 @@ final class AppSettings: ObservableObject {
         static let notifications = "notificationsEnabled"
         static let photoApp = "photoApp"
         static let lastMigration = "lastMigrationPath"
+        static let language = "language"
+        /// Read by macOS at launch to pick the app's language.
+        static let appleLanguages = "AppleLanguages"
     }
 
     private let defaults: UserDefaults
@@ -66,6 +70,17 @@ final class AppSettings: ObservableObject {
     @Published var photoApp: PhotoApp {
         didSet { defaults.set(photoApp.rawValue, forKey: Key.photoApp) }
     }
+    /// "" follows the Mac's language; "en" or "sl" picks one. macOS applies it when Notch next starts.
+    @Published var language: String {
+        didSet {
+            defaults.set(language, forKey: Key.language)
+            if language.isEmpty {
+                defaults.removeObject(forKey: Key.appleLanguages)
+            } else {
+                defaults.set([language], forKey: Key.appleLanguages)
+            }
+        }
+    }
 
     init(defaults: UserDefaults = .standard) {
         let defaultDestination = FileManager.default.homeDirectoryForCurrentUser
@@ -89,7 +104,21 @@ final class AppSettings: ObservableObject {
         ejectWhenDone = defaults.bool(forKey: Key.eject)
         notificationsEnabled = defaults.bool(forKey: Key.notifications)
         photoApp = PhotoApp(rawValue: defaults.string(forKey: Key.photoApp) ?? "") ?? .none
+        // A language picked for Notch in System Settings › General › Language & Region counts as picked here.
+        let picked = defaults.string(forKey: Key.language)
+            ?? (defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?[Key.appleLanguages] as? [String])?.first
+        language = picked.map { $0.hasPrefix(AppLanguage.slovenian) ? AppLanguage.slovenian : $0.hasPrefix(AppLanguage.english) ? AppLanguage.english : "" } ?? ""
     }
+
+    /// The language Notch shows after its next start: the picked one, or the Mac's.
+    var nextLanguage: String {
+        if !language.isEmpty { return language }
+        let system = defaults.persistentDomain(forName: UserDefaults.globalDomain)?[Key.appleLanguages] as? [String] ?? Locale.preferredLanguages
+        return Bundle.preferredLocalizations(from: [AppLanguage.english, AppLanguage.slovenian], forPreferences: system).first ?? AppLanguage.english
+    }
+
+    /// The chosen language isn't the one Notch shows: it switches when Notch starts again.
+    var languageNeedsRestart: Bool { nextLanguage != AppLanguage.current }
 
     /// The folder a year was last moved to, offered first next time.
     var lastMigrationPath: String? {

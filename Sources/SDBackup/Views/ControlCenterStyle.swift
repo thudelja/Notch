@@ -129,7 +129,7 @@ struct ControlCenterToggleStyle: ToggleStyle {
                     configuration.label
                         .font(.moduleTitle)
                         .lineLimit(1)
-                    Text(configuration.isOn ? "On" : "Off")
+                    Text(configuration.isOn ? String(localized: "On") : String(localized: "Off"))
                         .font(.moduleSubtitle)
                         .foregroundStyle(.secondary)
                 }
@@ -138,7 +138,7 @@ struct ControlCenterToggleStyle: ToggleStyle {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
+        .accessibilityValue(configuration.isOn ? String(localized: "On") : String(localized: "Off"))
     }
 }
 
@@ -200,6 +200,6 @@ struct CapsuleProgress: View {
         .clipShape(Capsule())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Backup progress")
-        .accessibilityValue(fraction.map { "\(Int(($0 * 100).rounded())) percent" } ?? "Checking the card")
+        .accessibilityValue(fraction.map { String(localized: "\(Int(($0 * 100).rounded())) percent") } ?? String(localized: "Checking the card"))
     }
 }

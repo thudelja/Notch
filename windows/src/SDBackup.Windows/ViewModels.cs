@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
@@ -14,31 +15,40 @@ namespace SDBackup.Windows;
 public enum DayChoiceKind
 {
     Unassigned,
-    /// <summary>A new project in the projects folder.</summary>
+    /// <summary>A new project, in the photos' and videos' default places or in folders chosen for it.</summary>
     NewProject,
-    /// <summary>A new project in a folder the user chose: its dated folder is made inside it.</summary>
-    NewProjectIn,
+    /// <summary>A new project in an open multi-day shoot: it goes in the shoot's folder.</summary>
+    NewInShoot,
+    /// <summary>A new multi-day shoot, with this day's project as its first.</summary>
+    NewShoot,
     /// <summary>The same new project as another day on this card.</summary>
     SameAs,
     Existing,
-    /// <summary>"New project in a folder…": asks for the folder. Never stays selected.</summary>
-    ChooseFolder,
     Skip,
 }
 
 /// <summary>What the user picked for one shoot day.</summary>
-public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid? ProjectId = null, string? Folder = null)
+public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid? ProjectId = null, Guid? ShootId = null)
 {
     public static readonly DayChoice Unassigned = new(DayChoiceKind.Unassigned);
     public static readonly DayChoice NewProject = new(DayChoiceKind.NewProject);
-    public static readonly DayChoice ChooseFolder = new(DayChoiceKind.ChooseFolder);
+    public static readonly DayChoice NewShoot = new(DayChoiceKind.NewShoot);
     public static readonly DayChoice Skip = new(DayChoiceKind.Skip);
-    public static DayChoice NewProjectIn(string folder) => new(DayChoiceKind.NewProjectIn, Folder: folder);
+    public static DayChoice NewInShoot(Guid shootId) => new(DayChoiceKind.NewInShoot, ShootId: shootId);
     public static DayChoice SameAs(ShootDay owner) => new(DayChoiceKind.SameAs, Owner: owner);
     public static DayChoice Existing(Guid projectId) => new(DayChoiceKind.Existing, ProjectId: projectId);
 
-    /// <summary>A new project, in the projects folder or in a chosen folder.</summary>
-    public bool IsNewProject => Kind is DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn;
+    /// <summary>A new project of any kind; days can be "same as" it.</summary>
+    public bool IsNewProject => Kind is DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot;
+}
+
+/// <summary>What an import draft asks the app for: folder pickers, default folder names and finishing a shoot.</summary>
+public sealed record ImportDraftServices(
+    Action<ImportDraftViewModel, ShootDay, FolderStructure.Branch> ChooseFolder,
+    Func<FolderStructure.Branch, string> DefaultPlaceName,
+    Action<Guid> FinishShoot)
+{
+    public static readonly ImportDraftServices None = new((_, _, _) => { }, _ => "Projects", _ => { });
 }
 
 /// <summary>An entry in a day's project picker. Kept (and its title updated) across refreshes so the picker keeps its selection.</summary>
@@ -61,24 +71,31 @@ public sealed class ImportDraftViewModel : ObservableObject
     private readonly Dictionary<ShootDay, DayChoice> _choices = new();
     private readonly Action<ImportDraftViewModel> _import;
     private readonly Action<ImportDraftViewModel> _dismiss;
-    private readonly Action<ImportDraftViewModel, ShootDay> _chooseFolder;
+    private readonly ImportDraftServices _services;
     private readonly List<ProjectInfo> _chosenProjects = [];
+    private readonly Dictionary<ShootDay, string> _photoFolders = new();
+    private readonly Dictionary<ShootDay, string> _videoFolders = new();
+    private readonly HashSet<Guid> _finishedShoots = [];
 
     public ImportDraftViewModel(
         VolumeInfo volume,
         CardAnalysis analysis,
         IReadOnlyList<ProjectInfo> recentProjects,
+        IReadOnlyList<MultiDayShoot> openShoots,
         IReadOnlyDictionary<string, string> cameraNames,
         Action<ImportDraftViewModel> import,
         Action<ImportDraftViewModel> dismiss,
-        Action<ImportDraftViewModel, ShootDay> chooseFolder)
+        ImportDraftServices services)
     {
         Volume = volume;
         Analysis = analysis;
         RecentProjects = recentProjects;
+        OpenShoots = openShoots;
         _import = import;
         _dismiss = dismiss;
-        _chooseFolder = chooseFolder;
+        _services = services;
+        HasPhotos = analysis.Items.Any(i => i.Kind == MediaKind.Photo);
+        HasVideos = analysis.Items.Any(i => i.Kind != MediaKind.Photo);
 
         var days = analysis.Days;
         foreach (var summary in days)
@@ -92,7 +109,7 @@ public sealed class ImportDraftViewModel : ObservableObject
         var keys = analysis.CameraModels.Concat(analysis.HasUnknownCamera ? [""] : Array.Empty<string>());
         foreach (var key in keys)
         {
-            var row = new CameraRowViewModel(key, counts.GetValueOrDefault(key), cameraNames.GetValueOrDefault(key) ?? "Camera");
+            var row = new CameraRowViewModel(key, counts.GetValueOrDefault(key), cameraNames.GetValueOrDefault(key) ?? Loc.T("Camera"));
             row.PropertyChanged += (_, _) => Changed();
             Cameras.Add(row);
         }
@@ -105,13 +122,17 @@ public sealed class ImportDraftViewModel : ObservableObject
     public VolumeInfo Volume { get; }
     public CardAnalysis Analysis { get; }
     public IReadOnlyList<ProjectInfo> RecentProjects { get; }
+    /// <summary>Multi-day shoots offered as "New in “…”".</summary>
+    public IReadOnlyList<MultiDayShoot> OpenShoots { get; }
+    public bool HasPhotos { get; }
+    public bool HasVideos { get; }
     public ObservableCollection<DayRowViewModel> Days { get; } = [];
     public ObservableCollection<CameraRowViewModel> Cameras { get; } = [];
     public bool HasCameras => Cameras.Count > 0;
     public RelayCommand ImportCommand { get; }
     public ICommand NotNowCommand { get; }
 
-    public string Title => $"Import “{Volume.Name}”";
+    public string Title => Loc.F("Import “{0}”", Volume.Name);
 
     public string Summary
     {
@@ -123,7 +144,7 @@ public sealed class ImportDraftViewModel : ObservableObject
                 Format.Count(Analysis.Items.Count, "new file"),
                 Format.Bytes(Analysis.TotalBytes),
             };
-            if (Analysis.AlreadyImported > 0) parts.Add($"{Analysis.AlreadyImported} imported before");
+            if (Analysis.AlreadyImported > 0) parts.Add(Loc.Plural(Analysis.AlreadyImported, "{0:N0} imported before", "{0:N0} imported before"));
             return string.Join(" · ", parts);
         }
     }
@@ -133,7 +154,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     public void SetChoice(ShootDay day, DayChoice choice)
     {
         var previous = ChoiceFor(day);
-        if (previous == choice || choice.Kind == DayChoiceKind.ChooseFolder) return;
+        if (previous == choice) return;
         _choices[day] = choice;
         // Days that pointed at this day's new project need a new answer.
         if (previous.IsNewProject && !choice.IsNewProject)
@@ -159,14 +180,59 @@ public sealed class ImportDraftViewModel : ObservableObject
         RefreshOptions();
     }
 
-    /// <summary>"New project in a folder…": asks for the folder once the picker has closed.</summary>
-    internal void ChooseFolder(ShootDay day)
+    /// <summary>A new project's "Change…": asks for the folder its photos or videos go in.</summary>
+    internal void ChooseFolder(ShootDay day, FolderStructure.Branch branch)
     {
-        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(() =>
+        _services.ChooseFolder(this, day, branch);
+        RefreshOptions();
+    }
+
+    /// <summary>A folder chosen for a new project's photos or videos; null goes back to the default place.</summary>
+    public void SetFolder(ShootDay day, FolderStructure.Branch branch, string? folder)
+    {
+        var folders = branch == FolderStructure.Branch.Photo ? _photoFolders : _videoFolders;
+        if (folder is null) folders.Remove(day);
+        else folders[day] = folder;
+        RefreshOptions();
+    }
+
+    public string? FolderFor(ShootDay day, FolderStructure.Branch branch) =>
+        (branch == FolderStructure.Branch.Photo ? _photoFolders : _videoFolders).GetValueOrDefault(day);
+
+    /// <summary>"Photos → Projects": where a new project's photos or videos go.</summary>
+    internal string PlaceText(ShootDay day, FolderStructure.Branch branch)
+    {
+        var place = FolderFor(day, branch) is { } folder ? Format.FolderName(folder) : _services.DefaultPlaceName(branch);
+        return branch == FolderStructure.Branch.Photo ? Loc.F("Photos → {0}", place) : Loc.F("Videos → {0}", place);
+    }
+
+    public MultiDayShoot? Shoot(Guid id) => OpenShoots.FirstOrDefault(s => s.Id == id);
+
+    /// <summary>Finishes a shoot from the panel. It still takes this import; every day in it shows it as finished.</summary>
+    internal void FinishShoot(Guid id)
+    {
+        if (!_finishedShoots.Add(id)) return;
+        _services.FinishShoot(id);
+        RefreshOptions();
+    }
+
+    public bool IsFinished(Guid shootId) => _finishedShoots.Contains(shootId);
+
+    /// <summary>Multi-day shoots this import starts, and those it adds to (by name).</summary>
+    public (IReadOnlyList<string> Started, IReadOnlyList<string> Continued) ShootsUsed
+    {
+        get
         {
-            _chooseFolder(this, day);
-            RefreshOptions();
-        });
+            var started = new List<string>();
+            var continued = new List<string>();
+            foreach (var row in Days)
+            {
+                var choice = ChoiceFor(row.Day);
+                if (choice.Kind == DayChoiceKind.NewShoot) started.Add(row.ShootName.Trim());
+                if (choice is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } && Shoot(id) is { } shoot) continued.Add(shoot.Name);
+            }
+            return (started, continued);
+        }
     }
 
     private IEnumerable<ProjectInfo> KnownProjects => RecentProjects.Concat(_chosenProjects);
@@ -183,34 +249,33 @@ public sealed class ImportDraftViewModel : ObservableObject
     {
         var options = new List<(DayChoice Choice, string Title)>
         {
-            (DayChoice.Unassigned, "Choose a project…"),
-            (DayChoice.NewProject, "New project"),
+            (DayChoice.Unassigned, Loc.T("Choose a project…")),
+            (DayChoice.NewProject, Loc.T("New project")),
         };
-        if (ChoiceFor(day) is { Kind: DayChoiceKind.NewProjectIn, Folder: { } folder } chosen)
-        {
-            options.Add((chosen, $"New project in “{System.IO.Path.GetFileName(folder.TrimEnd('\\', '/'))}”"));
-        }
-        options.Add((DayChoice.ChooseFolder, "New project in a folder…"));
+        foreach (var shoot in OpenShoots) options.Add((DayChoice.NewInShoot(shoot.Id), Loc.F("New in “{0}”", shoot.Name)));
+        options.Add((DayChoice.NewShoot, Loc.T("New multi-day shoot…")));
         foreach (var row in Days)
         {
             if (row.Day != day && ChoiceFor(row.Day).IsNewProject)
             {
-                options.Add((DayChoice.SameAs(row.Day), $"Same as {NewProjectTitle(row.Day)}"));
+                options.Add((DayChoice.SameAs(row.Day), SameAsTitle(row.Day)));
             }
         }
         foreach (var project in KnownProjects)
         {
-            var missing = IsOnConnectedDrive(project) ? "" : " (drive not connected)";
-            options.Add((DayChoice.Existing(project.Id), $"{project.Name} · {project.StartDay.FolderDate}{missing}"));
+            options.Add((DayChoice.Existing(project.Id), IsOnConnectedDrive(project)
+                ? $"{project.Name} · {project.StartDay.FolderDate}"
+                : Loc.F("{0} · {1} (drive not connected)", project.Name, project.StartDay.FolderDate)));
         }
-        options.Add((DayChoice.Skip, "Skip for now"));
+        options.Add((DayChoice.Skip, Loc.T("Skip for now")));
         return options;
     }
 
-    private string NewProjectTitle(ShootDay owner)
+    /// <summary>"Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.</summary>
+    private string SameAsTitle(ShootDay owner)
     {
         var name = NameFor(owner);
-        return name.Length == 0 ? $"the new project on {owner.FolderDate}" : $"“{name}” (new)";
+        return name.Length == 0 ? Loc.F("Same as the new project on {0}", owner.FolderDate) : Loc.F("Same as “{0}” (new)", name);
     }
 
     internal string NameFor(ShootDay day) => Days.FirstOrDefault(d => d.Day == day)?.ProjectName.Trim() ?? "";
@@ -237,35 +302,37 @@ public sealed class ImportDraftViewModel : ObservableObject
                 var choice = ChoiceFor(row.Day);
                 switch (choice.Kind)
                 {
-                    case DayChoiceKind.Unassigned or DayChoiceKind.ChooseFolder:
-                        return $"Choose a project for {row.Day.FolderDate}.";
+                    case DayChoiceKind.Unassigned:
+                        return Loc.F("Choose a project for {0}.", row.Day.FolderDate);
                     case DayChoiceKind.Skip:
                         continue;
-                    case DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn when NameFor(row.Day).Length == 0:
-                        return $"Type a name for the new project ({row.Day.FolderDate}).";
+                    case DayChoiceKind.NewShoot when row.ShootName.Trim().Length == 0:
+                        return Loc.F("Type a name for the multi-day shoot ({0}).", row.Day.FolderDate);
+                    case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot when NameFor(row.Day).Length == 0:
+                        return Loc.F("Type a name for the new project ({0}).", row.Day.FolderDate);
                     case DayChoiceKind.SameAs when choice.Owner is ShootDay owner
                                                 && (!ChoiceFor(owner).IsNewProject || NameFor(owner).Length == 0):
-                        return $"Type a name for the new project ({owner.FolderDate}).";
+                        return Loc.F("Type a name for the new project ({0}).", owner.FolderDate);
                     case DayChoiceKind.Existing:
                         var project = KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
                         if (project is not null && !IsAvailable(project, row.Summary))
                         {
-                            return $"“{project.Name}” is on a drive that isn’t connected. Connect it or choose another project.";
+                            return Loc.F("“{0}” is on a drive that isn’t connected. Connect it or choose another project.", project.Name);
                         }
                         break;
                 }
                 importsSomething = true;
             }
-            return importsSomething ? null : "Every date is skipped.";
+            return importsSomething ? null : Loc.T("Every date is skipped.");
         }
     }
 
     /// <summary>
-    /// The project for every day that isn't skipped; new projects start on their earliest day, in the projects folder
-    /// (videos in <paramref name="videosFolder"/>, when separate) or in the folder chosen for them. Null if a folder
-    /// isn't available.
+    /// The project for every day that isn't skipped. A new project starts on its earliest day; its photos and videos go to
+    /// their default places (<paramref name="photosRoot"/>, <paramref name="videosRoot"/>) or the folders chosen for them,
+    /// and into its shoot's folder for a multi-day shoot. Null if a folder isn't available.
     /// </summary>
-    public IReadOnlyDictionary<ShootDay, ProjectInfo>? ResolveProjects(LibraryStore store, string projectsFolder, string? videosFolder)
+    public IReadOnlyDictionary<ShootDay, ProjectInfo>? ResolveProjects(LibraryStore store, string photosRoot, string videosRoot)
     {
         var result = new Dictionary<ShootDay, ProjectInfo>();
         var newProjectDays = new Dictionary<ShootDay, List<ShootDay>>();
@@ -274,7 +341,7 @@ public sealed class ImportDraftViewModel : ObservableObject
             var choice = ChoiceFor(row.Day);
             switch (choice.Kind)
             {
-                case DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn:
+                case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot:
                     AddTo(newProjectDays, row.Day, row.Day);
                     break;
                 case DayChoiceKind.SameAs when choice.Owner is ShootDay owner:
@@ -288,19 +355,18 @@ public sealed class ImportDraftViewModel : ObservableObject
         foreach (var (owner, members) in newProjectDays)
         {
             var ownerChoice = ChoiceFor(owner);
-            ProjectInfo? project;
-            if (ownerChoice.Kind == DayChoiceKind.NewProject)
+            string? series = ownerChoice switch
             {
-                project = store.ProjectNamed(NameFor(owner), members.Min(), projectsFolder, videosFolder);
-            }
-            else if (ownerChoice is { Kind: DayChoiceKind.NewProjectIn, Folder: { } folder })
-            {
-                project = store.ProjectNamed(NameFor(owner), members.Min(), folder, store.Structure(projectsFolder));
-            }
-            else
-            {
-                continue;
-            }
+                { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } => Shoot(id)?.Name,
+                { Kind: DayChoiceKind.NewShoot } => Days.FirstOrDefault(d => d.Day == owner)?.ShootName.Trim(),
+                _ => null,
+            };
+            if (!ownerChoice.IsNewProject) continue;
+            // Folders can be chosen for a plain new project; a shoot's projects go in the shoot's folder.
+            var isPlain = ownerChoice.Kind == DayChoiceKind.NewProject;
+            var project = store.NewProject(NameFor(owner), members.Min(), series,
+                new LibraryStore.Place(photosRoot, isPlain ? FolderFor(owner, FolderStructure.Branch.Photo) : null),
+                new LibraryStore.Place(videosRoot, isPlain ? FolderFor(owner, FolderStructure.Branch.Video) : null));
             if (project is null) return null;
             foreach (var day in members) result[day] = project;
         }
@@ -318,7 +384,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     public string CameraNameFor(MediaItem item)
     {
         var name = Cameras.FirstOrDefault(c => c.Key == (item.CameraModel ?? ""))?.Name.Trim() ?? "";
-        return name.Length == 0 ? "Camera" : name;
+        return name.Length == 0 ? Loc.T("Camera") : name;
     }
 }
 
@@ -327,12 +393,18 @@ public sealed class DayRowViewModel : ObservableObject
 {
     private readonly ImportDraftViewModel _owner;
     private string _projectName = "";
+    private string _shootName = "";
     private bool _refreshing;
 
     public DayRowViewModel(ImportDraftViewModel owner, DaySummary summary)
     {
         _owner = owner;
         Summary = summary;
+        ChangePhotosCommand = new RelayCommand(() => owner.ChooseFolder(Day, FolderStructure.Branch.Photo));
+        ChangeVideosCommand = new RelayCommand(() => owner.ChooseFolder(Day, FolderStructure.Branch.Video));
+        ResetPhotosCommand = new RelayCommand(() => owner.SetFolder(Day, FolderStructure.Branch.Photo, null));
+        ResetVideosCommand = new RelayCommand(() => owner.SetFolder(Day, FolderStructure.Branch.Video, null));
+        FinishShootCommand = new RelayCommand(FinishShoot);
     }
 
     public DaySummary Summary { get; }
@@ -347,7 +419,7 @@ public sealed class DayRowViewModel : ObservableObject
             var parts = new List<string>();
             if (Summary.Photos > 0) parts.Add(Format.Count(Summary.Photos, "photo"));
             if (Summary.Videos > 0) parts.Add(Format.Count(Summary.Videos, "video"));
-            if (Summary.Audio > 0) parts.Add($"{Summary.Audio} audio");
+            if (Summary.Audio > 0) parts.Add(Format.Count(Summary.Audio, "audio", "audio"));
             parts.Add(Format.Bytes(Summary.Bytes));
             return string.Join(" · ", parts);
         }
@@ -363,16 +435,58 @@ public sealed class DayRowViewModel : ObservableObject
         {
             // The picker reports null when its selected option is removed during a refresh.
             if (value is null || _refreshing) return;
-            if (value.Kind == DayChoiceKind.ChooseFolder)
-            {
-                _owner.ChooseFolder(Day);
-                return;
-            }
             _owner.SetChoice(Day, value);
         }
     }
 
     public bool IsNewProject => _owner.ChoiceFor(Day).IsNewProject;
+    public bool IsNewShoot => _owner.ChoiceFor(Day).Kind == DayChoiceKind.NewShoot;
+    public bool IsInShoot => _owner.ChoiceFor(Day).Kind == DayChoiceKind.NewInShoot;
+
+    /// <summary>A plain new project: its photos' and videos' folders can be changed.</summary>
+    public bool IsPlainNew => _owner.ChoiceFor(Day).Kind == DayChoiceKind.NewProject;
+
+    /// <summary>The row asks for the new project's name (a new shoot asks for it with the shoot's name).</summary>
+    public bool AsksForName => IsPlainNew || IsInShoot;
+    public bool ShowsPhotoPlace => IsPlainNew && _owner.HasPhotos;
+    public bool ShowsVideoPlace => IsPlainNew && _owner.HasVideos;
+    public string PhotoPlaceText => _owner.PlaceText(Day, FolderStructure.Branch.Photo);
+    public string VideoPlaceText => _owner.PlaceText(Day, FolderStructure.Branch.Video);
+    public bool HasChosenPhotoFolder => _owner.FolderFor(Day, FolderStructure.Branch.Photo) is not null;
+    public bool HasChosenVideoFolder => _owner.FolderFor(Day, FolderStructure.Branch.Video) is not null;
+
+    public ICommand ChangePhotosCommand { get; }
+    public ICommand ChangeVideosCommand { get; }
+    public ICommand ResetPhotosCommand { get; }
+    public ICommand ResetVideosCommand { get; }
+
+    /// <summary>The name of a new multi-day shoot started on this day.</summary>
+    public string ShootName
+    {
+        get => _shootName;
+        set
+        {
+            if (SetProperty(ref _shootName, value ?? "")) _owner.Changed();
+        }
+    }
+
+    private MultiDayShoot? ChosenShoot => _owner.ChoiceFor(Day) is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } ? _owner.Shoot(id) : null;
+
+    public string FinishShootTitle => ChosenShoot is { } shoot ? Loc.F("Hold to finish “{0}”", shoot.Name) : "";
+    public string ShootFinishedText => ChosenShoot is { } shoot ? Loc.F("“{0}” is finished after this import", shoot.Name) : "";
+
+    /// <summary>The chosen shoot was finished in this panel (it still takes this import).</summary>
+    public bool ShootFinished => ChosenShoot is { } shoot && _owner.IsFinished(shoot.Id);
+
+    public bool CanFinishShoot => IsInShoot && !ShootFinished;
+
+    /// <summary>The hold-to-finish button's command (it runs after the button was held).</summary>
+    public ICommand FinishShootCommand { get; }
+
+    private void FinishShoot()
+    {
+        if (ChosenShoot is { } shoot) _owner.FinishShoot(shoot.Id);
+    }
 
     public string ProjectName
     {
@@ -408,8 +522,16 @@ public sealed class DayRowViewModel : ObservableObject
             if (index != i) Options.Move(index, i);
         }
         _refreshing = false;
-        OnPropertyChanged(nameof(Choice));
-        OnPropertyChanged(nameof(IsNewProject));
+        foreach (var name in new[]
+                 {
+                     nameof(Choice), nameof(IsNewProject), nameof(IsNewShoot), nameof(IsInShoot), nameof(IsPlainNew), nameof(AsksForName),
+                     nameof(ShowsPhotoPlace), nameof(ShowsVideoPlace), nameof(PhotoPlaceText), nameof(VideoPlaceText),
+                     nameof(HasChosenPhotoFolder), nameof(HasChosenVideoFolder), nameof(FinishShootTitle),
+                     nameof(ShootFinishedText), nameof(ShootFinished), nameof(CanFinishShoot),
+                 })
+        {
+            OnPropertyChanged(name);
+        }
     }
 }
 
@@ -420,7 +542,7 @@ public sealed class CameraRowViewModel(string key, int fileCount, string name) :
 
     /// <summary>The camera model, or "" for files without camera information.</summary>
     public string Key { get; } = key;
-    public string Label => Key.Length == 0 ? "No camera info" : Key;
+    public string Label => Key.Length == 0 ? Loc.T("No camera info") : Key;
     public string CountText => Format.Count(fileCount, "file");
 
     public string Name
@@ -481,9 +603,9 @@ public sealed class StatusViewModel(TaskKind kind, string title, string subtitle
             Line1Right = Line2Left = Line2Right = CurrentFile = "";
             return;
         }
-        Line1Left = $"{Format.Bytes(progress.BytesProcessed)} of {Format.Bytes(progress.BytesToCopy)}";
-        Line1Right = TimeLeft(progress) is TimeSpan left ? $"{Format.Duration(left)} left" : "";
-        Line2Left = $"{progress.FilesProcessed:N0} of {Format.Count(progress.FilesToCopy, "file")}";
+        Line1Left = Loc.F("{0} of {1}", Format.Bytes(progress.BytesProcessed), Format.Bytes(progress.BytesToCopy));
+        Line1Right = TimeLeft(progress) is TimeSpan left ? Loc.F("{0} left", Format.Duration(left)) : "";
+        Line2Left = Loc.Plural(progress.FilesToCopy, "{1:N0} of {0:N0} file", "{1:N0} of {0:N0} files", progress.FilesProcessed);
         Line2Right = $"{Math.Round(progress.FractionCompleted * 100):0}%";
         CurrentFile = progress.CurrentFile ?? "";
     }
@@ -538,10 +660,10 @@ public sealed class CardViewModel(VolumeInfo volume, ICommand import, ICommand e
 
     public string StatusText => Status switch
     {
-        CardStatus.Reading => "Reading…",
-        CardStatus.NeedsProject => "Choose project",
-        CardStatus.Queued => "Queued",
-        CardStatus.Importing => "Importing",
+        CardStatus.Reading => Loc.T("Reading…"),
+        CardStatus.NeedsProject => Loc.T("Choose project"),
+        CardStatus.Queued => Loc.T("Queued"),
+        CardStatus.Importing => Loc.T("Importing"),
         _ => "",
     };
 
@@ -586,13 +708,17 @@ public sealed record HistoryEntry
     [JsonIgnore]
     public string Summary => (Kind, Outcome) switch
     {
-        (HistoryKind.Migration, Outcome.Completed) => $"{Format.Count(FilesCopied, "file")} · {Format.Bytes(BytesCopied)} · to {CardName}",
-        (HistoryKind.Migration, Outcome.CompletedWithErrors) => $"{Format.Count(FilesCopied, "file")} moved to {CardName} · {FailedFiles} stayed on this PC",
-        (HistoryKind.Migration, _) => Message ?? "Move stopped",
-        (_, Outcome.Completed) when FilesCopied == 0 => $"Already there · from {CardName}",
-        (_, Outcome.Completed) => $"{Format.Count(FilesCopied, "file")} · {Format.Bytes(BytesCopied)} · from {CardName}",
-        (_, Outcome.CompletedWithErrors) => $"{Format.Count(FilesCopied, "file")} copied · {FailedFiles} couldn’t be copied",
-        _ => Message ?? "Import stopped",
+        (HistoryKind.Migration, Outcome.Completed) => Loc.F("{0} · {1} · to {2}", Format.Count(FilesCopied, "file"), Format.Bytes(BytesCopied), CardName),
+        (HistoryKind.Migration, Outcome.CompletedWithErrors) =>
+            Loc.Plural(FilesCopied, "{0:N0} file moved to {1}", "{0:N0} files moved to {1}", CardName) + " · "
+            + Loc.Plural(FailedFiles, "{0:N0} stayed on this PC", "{0:N0} stayed on this PC"),
+        (HistoryKind.Migration, _) => Message ?? Loc.T("Move stopped"),
+        (_, Outcome.Completed) when FilesCopied == 0 => Loc.F("Already there · from {0}", CardName),
+        (_, Outcome.Completed) => Loc.F("{0} · {1} · from {2}", Format.Count(FilesCopied, "file"), Format.Bytes(BytesCopied), CardName),
+        (_, Outcome.CompletedWithErrors) =>
+            Loc.Plural(FilesCopied, "{0:N0} file copied", "{0:N0} files copied") + " · "
+            + Loc.Plural(FailedFiles, "{0:N0} couldn’t be copied", "{0:N0} couldn’t be copied"),
+        _ => Message ?? Loc.T("Import stopped"),
     };
 }
 
@@ -613,13 +739,11 @@ public static class Relative
     public static string Format(DateTime utc)
     {
         var span = DateTime.UtcNow - utc;
-        if (span < TimeSpan.FromMinutes(1)) return "just now";
-        if (span < TimeSpan.FromHours(1)) return Plural((int)span.TotalMinutes, "minute");
-        if (span < TimeSpan.FromDays(1)) return Plural((int)span.TotalHours, "hour");
-        if (span < TimeSpan.FromDays(2)) return "yesterday";
-        if (span < TimeSpan.FromDays(7)) return Plural((int)span.TotalDays, "day");
+        if (span < TimeSpan.FromMinutes(1)) return Loc.T("just now");
+        if (span < TimeSpan.FromHours(1)) return Loc.Plural((int)span.TotalMinutes, "{0} minute ago", "{0} minutes ago");
+        if (span < TimeSpan.FromDays(1)) return Loc.Plural((int)span.TotalHours, "{0} hour ago", "{0} hours ago");
+        if (span < TimeSpan.FromDays(2)) return Loc.T("yesterday");
+        if (span < TimeSpan.FromDays(7)) return Loc.Plural((int)span.TotalDays, "{0} day ago", "{0} days ago");
         return utc.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture);
-
-        static string Plural(int n, string unit) => $"{n} {unit}{(n == 1 ? "" : "s")} ago";
     }
 }

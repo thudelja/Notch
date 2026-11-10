@@ -4,20 +4,20 @@
 
 The Windows 10 and 11 version of Notch. It does exactly what the Mac version does (see the
 [main README](../README.md)) and shares its folder layout and project files, so a projects
-folder on an exFAT SSD works on both.
+folder on an exFAT SSD works on both. In English or Slovenian (*slovensko*: [README.sl.md](README.sl.md)).
 
 - Lives in the **notification area** (bottom right, next to Wi-Fi and the clock). Click the Notch
   icon (an orange SD card with a check) to open a panel styled like Windows 11 Quick Settings. Right-click for a menu.
 - When a card goes in, it reads the shoot dates and cameras, shows a notification, and the panel
-  asks which project each shoot date belongs to (a new project, one of your last two, or a project in any
-  folder you choose).
-- Copies into `Projects\2026\Photo\11 November\02.11.2026 Name\<Camera>\` and
+  asks which project each shoot date belongs to (a new project, a day of a multi-day shoot, or one of
+  your last two projects).
+- Copies photos into `Projects\2026\Photo\11 November\02.11.2026 Name\<Camera>\` and videos into
   `Projects\2026\Video\11 November\02.11.2026 Name\Media\<Camera>\` (plus `Project`, `Assets`,
-  `Export`), or into a structure of your own, verifies every file with SHA-256, never overwrites, and
-  only offers new files when a card comes back.
+  `Export`), or each to a folder and structure of your own, verifies every file with SHA-256, never
+  overwrites, and only offers new files when a card comes back.
 - **Moves a whole year** to an external drive from Settings, deleting each file from the PC only
   after its copy is verified.
-- Follows Windows' light/dark mode and accent colour.
+- Follows Windows' light/dark mode, accent colour and display language (English or Slovenian).
 
 ## Requirements
 
@@ -67,8 +67,10 @@ yourself don't trigger SmartScreen.
   To stop it, set **Memory card** to **Take no action** in **Settings › Bluetooth & devices ›
   AutoPlay**.
 - **Projects folder.** The default is `Pictures\Projects`. Change it in **Settings**, where you can also
-  choose a separate folder for videos (for example on an SSD). Videos of new projects then go there in the
-  same folder structure. The version is shown at the bottom of Settings.
+  choose a separate folder for videos (for example on an SSD). Videos of new projects then go there, with
+  their own folder structure. The version is shown at the bottom of Settings.
+- **Language.** Notch follows Windows' display language. To choose English or Slovenian yourself, use
+  **Settings › General › Language**, then **Restart now**. The installer follows Windows' language too.
 
 ## Using it
 
@@ -76,21 +78,30 @@ The panel shows, from top to bottom:
 
 - **Quick settings tiles:** Auto import, Verify and Auto eject. Below them, buttons that open the
   projects folder, Settings and the log.
-- **Import:** one row per shoot date with a project picker (New project, New project in a folder…, Same
-  as another new project, your last two projects, or Skip for now), and the camera folder names. **New
-  project in a folder…** lets you choose any folder, for example `2026\AMD Koledar 2026` for a calendar
-  shot over several days; Notch makes the project's dated folder inside it. Choosing the folder of a
-  project Notch already knows adds the date to that project.
+- **Import:** one row per shoot date with a project picker (New project, New multi-day shoot…, New in
+  “…” for each open multi-day shoot, Same as another new project, your last two projects, or Skip for
+  now), and the camera folder names. A new project shows **Photos → …** and **Videos → …**: **Change…**
+  picks another folder for its photos or its videos, and Notch makes the project's dated folder inside
+  it. Choosing the folder of a project Notch already knows adds the date to that project. A day in a
+  multi-day shoot has a **Hold to finish** button: hold it for 1.5 seconds when the shoot is done.
 - **Progress:** reading a card, an import, or a year being moved, each with a cancel button.
 - **Cards:** connected cards, when each was last imported, and **Import** and **Eject** buttons.
 - **Recent:** the last imports. Click one to open its folder.
 
-**Settings › Folder structure…** changes how new projects are laid out below the year folder: Photo /
-Video (renamed or left out), the month (number, name or both, English or Slovenian names), folders with
-a fixed name, the project folder's date format and order, an optional **Unedited / Exported** pair
-(imports go into the first; an empty second folder with the same path is made for exports), camera
-folders on or off, and the folders in each video project. The structure is saved in the projects folder,
-so a drive shared with the Mac builds the same folders. Existing projects keep their folders.
+**Settings › Folder structure…** changes how new projects are laid out below the year folder, with a
+**Photos** and a **Videos** tab (each has its own structure): the Photo or Video folder (renamed or left
+out), the month (number, name or both, English or Slovenian names), folders with a fixed name, the
+project folder's date format and order, an optional **Unedited / Exported** pair (imports go into the
+first; an empty second folder with the same path is made for exports), camera folders on or off, and the
+folders in each video project. The structures are saved in the projects folder, so a drive shared with
+the Mac builds the same folders. Existing projects keep their folders. A new, empty projects folder gets
+Slovenian folder names when Notch is in Slovenian (`Foto`, `Video`, `11 november`; `Posnetki`, `Projekt`,
+`Viri`, `Izvoz`).
+
+**Multi-day shoots** (a calendar, a festival) keep all their days in one folder, which takes the month's
+place: `2026\Photo\AMD Koledar 2026\02.11.2026 Ana\…` and, for videos, one editing project for the
+whole shoot, `2026\Video\AMD Koledar 2026\Media\02.11.2026 Ana\…`. **Settings › Multi-day shoots**
+lists them, to finish or reopen; see the [main README](../README.md#multi-day-shoots).
 
 In **Settings › After importing** you can have Notch open the new photos of every import in
 **Lightroom Classic** or **Lightroom**. The app opens its own import window with them (videos aren't
@@ -143,7 +154,7 @@ windows/
 ├── src/SDBackup.Core      Import, copy and project logic. No Windows code; runs on any OS.
 ├── src/SDBackup.Windows   Drive watching, card detection, eject, settings, view models (no XAML).
 ├── src/SDBackup.App       The WPF app: tray icon, panel, settings window, theme, self-test.
-├── tests/                 xUnit tests for the core (62).
+├── tests/                 xUnit tests for the core (105), including the Slovenian translation.
 ├── installer/Notch.iss    The installer (Inno Setup); CI builds dist\Notch-Setup.exe from it.
 └── build.ps1              Test, build, install, uninstall.
 ```
@@ -156,9 +167,12 @@ dotnet run --project src/SDBackup.App -- --self-test out  # render every window 
 
 - **Icons:** `Assets/` holds files generated by `branding/make_icons.py` at the repository root, which
   draws the logo for both apps.
-- **Self-test:** `--self-test` opens the panel and the settings window in light and dark mode with
-  sample data, writes screenshots, and fails on any XAML or data-binding error. CI runs it on every
-  push.
+- **Self-test:** `--self-test` opens the panel, the settings window and the folder structure editor in
+  light and dark mode and in Slovenian, with sample data, writes screenshots, and fails on any XAML or
+  data-binding error. CI runs it on every push.
+- **Translations:** texts are written in English and translated with `Loc.T("…")` in C# and
+  `{l:T '…'}` in XAML; the Slovenian is in `src/SDBackup.Core/Strings/sl.json`, by English text. Texts
+  about a count have four Slovenian forms (1, 2, 3–4, 5+). A test fails if a text has no translation.
 - **Compile-checking on macOS or Linux:** the core and `SDBackup.Windows` build anywhere:
   `dotnet build src/SDBackup.Windows -p:ImportWindowsDesktopTargets=false`. The XAML app itself
   needs the Windows Desktop SDK, which ships with the .NET SDK on Windows.

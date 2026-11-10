@@ -27,7 +27,7 @@ public sealed record ImportJob(VolumeInfo Volume, ImportPlan Plan, IReadOnlyList
     {
         0 => Volume.Name,
         1 => Projects[0].Name,
-        _ => $"{Projects[0].Name} + {Projects.Count - 1} more",
+        _ => Loc.F("{0} + {1} more", Projects[0].Name, Projects.Count - 1),
     };
 }
 
@@ -80,7 +80,8 @@ public sealed class AppModel : ObservableObject, IDisposable
         OpenProjectsFolderCommand = new RelayCommand(OpenProjectsFolder);
         OpenSettingsCommand = new RelayCommand(() => SettingsRequested?.Invoke());
         OpenLogCommand = new RelayCommand(OpenLog);
-        QuitCommand = new RelayCommand(Quit);
+        QuitCommand = new RelayCommand(() => Leave(restart: false));
+        RestartCommand = new RelayCommand(() => Leave(restart: true));
         ChangeProjectsFolderCommand = new RelayCommand(ChangeProjectsFolder);
         ChangeVideosFolderCommand = new RelayCommand(ChangeVideosFolder);
         KeepVideosWithPhotosCommand = new RelayCommand(() => Settings.VideosFolder = "");
@@ -100,6 +101,8 @@ public sealed class AppModel : ObservableObject, IDisposable
             }
         };
         RefreshRecent();
+        Library.Shoots.Changed += () => _dispatcher.Invoke(RefreshShoots);
+        RefreshShoots();
     }
 
     // ------------------------------------------------------------------ Bindable state
@@ -116,11 +119,11 @@ public sealed class AppModel : ObservableObject, IDisposable
     /// <summary>The first card waiting for a project.</summary>
     public ImportDraftViewModel? CurrentDraft => _drafts.FirstOrDefault();
     public int WaitingCount => _drafts.Count;
-    public string MoreWaitingText => _drafts.Count > 1 ? $"+{_drafts.Count - 1} waiting" : "";
+    public string MoreWaitingText => _drafts.Count > 1 ? Loc.Plural(_drafts.Count - 1, "+{0} waiting", "+{0} waiting") : "";
 
     public bool ShowIdle => Tasks.Count == 0 && _drafts.Count == 0;
-    public string IdleTitle => Settings.AutoImport ? "Ready" : "Auto Import is off";
-    public string IdleSubtitle => Settings.AutoImport ? "Insert an SD card to import it into a project." : "Click Import next to a card to import it.";
+    public string IdleTitle => Settings.AutoImport ? Loc.T("Ready") : Loc.T("Auto Import is off");
+    public string IdleSubtitle => Settings.AutoImport ? Loc.T("Insert an SD card to import it into a project.") : Loc.T("Click Import next to a card to import it.");
     public bool HasCards => Cards.Count > 0;
     public bool HasRecent => Recent.Count > 0;
     public bool IsBusy => _activeJob is not null || _analyzing is not null || _migrationStatus is not null;
@@ -136,7 +139,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     {
         var version = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
         version = version.Split('+')[0]; // Without the commit .NET adds.
-        return version.Length == 0 || version.StartsWith("0.0.0", StringComparison.Ordinal) ? "Notch (test build)" : $"Notch {version}";
+        return version.Length == 0 || version.StartsWith("0.0.0", StringComparison.Ordinal) ? Loc.T("Notch (test build)") : $"Notch {version}";
     }
 
     public string ProjectsFolderName => Path.GetFileName(PathUtil.Normalize(Settings.ProjectsFolder)) is { Length: > 0 } name ? name : Settings.ProjectsFolder;
@@ -152,16 +155,39 @@ public sealed class AppModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where new projects go (Settings › Projects folder).</summary>
+    /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where a new project's photo and video go (Settings › Projects folder).</summary>
     public string FolderStructureSummary
     {
         get
         {
-            var lines = Library.Structure(Settings.ProjectsFolder).Summary.ToList();
-            if (Settings.SeparateVideosFolder is { } videos) lines.Add($"Videos are saved in {videos}, in the same structure.");
+            var photo = FolderStructureFor(FolderStructure.Branch.Photo);
+            var video = FolderStructureFor(FolderStructure.Branch.Video);
+            if (HasSeparateFolders)
+            {
+                photo = photo.WithoutMediaType;
+                video = video.WithoutMediaType;
+            }
+            var lines = new List<string>
+            {
+                Loc.F("Photos: {0}", string.Join(" › ", photo.ExamplePath(FolderStructure.Branch.Photo))),
+                Loc.F("Videos: {0}", string.Join(" › ", video.ExamplePath(FolderStructure.Branch.Video))),
+            };
+            if (Settings.SeparateVideosFolder is { } videos)
+            {
+                lines.Add(Loc.F("Videos are saved in {0}. Photo and Video folders are left out because photos and videos go to different folders.", videos));
+            }
             return string.Join(Environment.NewLine, lines);
         }
     }
+
+    /// <summary>The folder holding new projects' photos or videos by default.</summary>
+    public string DefaultRoot(FolderStructure.Branch branch) =>
+        branch == FolderStructure.Branch.Photo ? Settings.ProjectsFolder : Settings.SeparateVideosFolder ?? Settings.ProjectsFolder;
+
+    /// <summary>Photos and videos go to different folders, so the Photo / Video level is left out.</summary>
+    public bool HasSeparateFolders => Settings.HasSeparateVideosFolder;
+
+    private FolderStructure FolderStructureFor(FolderStructure.Branch branch) => Library.Structure(branch, DefaultRoot(branch));
 
     public bool CanMoveYear => !IsMigrating && _activeJob is null && Years.Contains(SelectedYear);
     public bool HasYears => Years.Count > 0;
@@ -187,6 +213,8 @@ public sealed class AppModel : ObservableObject, IDisposable
     public ICommand OpenSettingsCommand { get; }
     public ICommand OpenLogCommand { get; }
     public ICommand QuitCommand { get; }
+    /// <summary>Settings › Language: starts Notch again, in the chosen language.</summary>
+    public ICommand RestartCommand { get; }
     public ICommand ChangeProjectsFolderCommand { get; }
     public ICommand ChangeVideosFolderCommand { get; }
     public ICommand KeepVideosWithPhotosCommand { get; }
@@ -199,6 +227,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     /// <summary>True while a folder picker opened from the panel is up, so the panel stays open behind it.</summary>
     public event Action<bool>? PanelDialogOpen;
     public event Action? QuitRequested;
+    public event Action? RestartRequested;
     /// <summary>Raised when the number of cards waiting for a project changes (for the tray icon).</summary>
     public event Action<int>? WaitingCountChanged;
 
@@ -281,8 +310,8 @@ public sealed class AppModel : ObservableObject, IDisposable
             }
             card.Status = StatusOf(volume);
             card.Detail = LastImport(volume) is { } last
-                ? $"Imported {Relative.Format(last.Date)}"
-                : $"{(volume.Capacity is long c ? Format.Bytes(c) + " · " : "")}Not imported yet";
+                ? Loc.F("Imported {0}", Relative.Format(last.Date))
+                : (volume.Capacity is long c ? Format.Bytes(c) + " · " : "") + Loc.T("Not imported yet");
         }
         OnPropertyChanged(nameof(HasCards));
     }
@@ -296,7 +325,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (_analyzing is { } analyzing && Matches(analyzing)) _analysisCancel?.Cancel();
         if (_activeJob is { } job && Matches(job.Volume))
         {
-            _importStopReason ??= "The card was removed before the import finished. Insert it again to finish.";
+            _importStopReason ??= Loc.T("The card was removed before the import finished. Insert it again to finish.");
             _importCancel?.Cancel();
         }
         DraftsChanged();
@@ -331,9 +360,9 @@ public sealed class AppModel : ObservableObject, IDisposable
     private async void Analyze(VolumeInfo volume)
     {
         _analyzing = volume;
-        var status = new StatusViewModel(TaskKind.Reading, "Reading card", volume.DisplayName, CancelAnalysisCommand)
+        var status = new StatusViewModel(TaskKind.Reading, Loc.T("Reading card"), volume.DisplayName, CancelAnalysisCommand)
         {
-            Line1Left = "Looking for photos and videos…",
+            Line1Left = Loc.T("Looking for photos and videos…"),
         };
         AddTask(status);
         var ledger = Library.Ledger(volume.CardId);
@@ -352,7 +381,7 @@ public sealed class AppModel : ObservableObject, IDisposable
                 {
                     status.IsIndeterminate = false;
                     status.Progress = total == 0 ? 100 : 100.0 * done / total;
-                    status.Line1Left = $"Finding shoot dates and cameras · {done:N0} of {Format.Count(total, "file")}";
+                    status.Line1Left = Loc.T("Finding shoot dates and cameras") + " · " + Loc.Plural(total, "{1:N0} of {0:N0} file", "{1:N0} of {0:N0} files", done);
                 });
             }, cancellation.Token));
         }
@@ -374,19 +403,19 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (failure is OperationCanceledException) return;
         if (failure is not null || analysis is null)
         {
-            var message = failure?.Message ?? "Unknown error.";
+            var message = failure?.Message ?? Loc.T("Unknown error.");
             Log.Write($"Couldn’t read “{volume.DisplayName}”: {message}");
             Record(Outcome.Failed, volume.Name, volume, null, null, message);
-            Notify($"Couldn’t read “{volume.Name}”", message);
+            Notify(Loc.F("Couldn’t read “{0}”", volume.Name), message);
             return;
         }
         if (analysis.IsEmpty)
         {
             var detail = analysis.AlreadyImported > 0
-                ? $"All {Format.Count(analysis.AlreadyImported, "file")} on it were imported before."
-                : "It has no photos, videos or audio.";
+                ? Loc.Plural(analysis.AlreadyImported, "The {0:N0} file on it was imported before.", "All {0:N0} files on it were imported before.")
+                : Loc.T("It has no photos, videos or audio.");
             Log.Write($"“{volume.DisplayName}”: nothing new. {detail}");
-            Notify($"Nothing new on “{volume.Name}”", detail);
+            Notify(Loc.F("Nothing new on “{0}”", volume.Name), detail);
             if (Settings.EjectWhenDone && analysis.AlreadyImported > 0) Eject(volume, announce: true);
             return;
         }
@@ -398,14 +427,14 @@ public sealed class AppModel : ObservableObject, IDisposable
         {
             names[""] = Library.CameraNameForCard(volume.CardId)
                 ?? (analysis.CameraModels.Count == 1 ? names[analysis.CameraModels[0]] : null)
-                ?? "Camera";
+                ?? Loc.T("Camera");
         }
-        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), names, StartImport, Dismiss, ChooseProjectFolder);
+        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), Library.Shoots.Open, names, StartImport, Dismiss, DraftServices);
         _drafts.Add(draft);
         DraftsChanged();
         Log.Write($"Read “{volume.DisplayName}”: {analysis.Items.Count} new files on {draft.Days.Count} shoot day(s), {analysis.AlreadyImported} imported before");
-        Notify($"“{volume.Name}” is ready to import",
-            $"{Format.Count(draft.Days.Count, "shoot day")}, {Format.Count(analysis.Items.Count, "new file")}. Click to choose the project.");
+        Notify(Loc.F("“{0}” is ready to import", volume.Name),
+            Loc.F("{0}, {1}. Click to choose the project.", Format.Count(draft.Days.Count, "shoot day"), Format.Count(analysis.Items.Count, "new file")));
     }
 
     // ------------------------------------------------------------------ Step 2: the user picks projects
@@ -420,12 +449,12 @@ public sealed class AppModel : ObservableObject, IDisposable
     {
         if (!draft.IsReady) return;
         Library.RefreshLocations();
-        var projects = draft.ResolveProjects(Library, Settings.ProjectsFolder, Settings.SeparateVideosFolder);
+        var projects = draft.ResolveProjects(Library, DefaultRoot(FolderStructure.Branch.Photo), DefaultRoot(FolderStructure.Branch.Video));
         if (projects is null)
         {
-            var folders = Settings.SeparateVideosFolder is { } videos ? $"{Settings.ProjectsFolder} or {videos}" : Settings.ProjectsFolder;
-            _dialogs.Alert("The projects folder isn’t available",
-                $"{folders} can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings.");
+            var folders = Settings.SeparateVideosFolder is { } videos ? Loc.F("{0} or {1}", Settings.ProjectsFolder, videos) : Settings.ProjectsFolder;
+            _dialogs.Alert(Loc.T("The projects folder isn’t available"),
+                Loc.F("{0} can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings.", folders));
             return;
         }
         // Each file needs its folder's drive: the photos' or the videos'.
@@ -435,12 +464,15 @@ public sealed class AppModel : ObservableObject, IDisposable
             .FirstOrDefault(project => project is not null);
         if (offline is not null)
         {
-            _dialogs.Alert("Connect the drive", $"“{offline.Name}” is on a drive that isn’t connected. Connect it and click Import again.");
+            _dialogs.Alert(Loc.T("Connect the drive"), Loc.F("“{0}” is on a drive that isn’t connected. Connect it and click Import again.", offline.Name));
             return;
         }
 
         var plan = ProjectLayout.Plan(draft.Analysis.Items, projects, draft.CameraNameFor);
         Library.RememberCameraNames(draft.CameraNames, draft.Volume.CardId);
+        var (started, continued) = draft.ShootsUsed;
+        foreach (var name in started) Library.Shoots.Start(name);
+        foreach (var name in continued) Library.Shoots.MarkUsed(name);
         _drafts.Remove(draft);
         DraftsChanged();
         if (plan.Items.Count == 0) return;
@@ -461,7 +493,7 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     private void CancelImport()
     {
-        _importStopReason = "Cancelled. Files copied so far were kept.";
+        _importStopReason = Loc.T("Cancelled. Files copied so far were kept.");
         _importCancel?.Cancel();
     }
 
@@ -478,7 +510,7 @@ public sealed class AppModel : ObservableObject, IDisposable
             }
             else
             {
-                Notify($"Couldn’t import “{job.Volume.Name}”", "The card was removed. Insert it again to import.");
+                Notify(Loc.F("Couldn’t import “{0}”", job.Volume.Name), Loc.T("The card was removed. Insert it again to import."));
             }
         }
         SyncCards();
@@ -488,7 +520,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     {
         _activeJob = job;
         _importStopReason = null;
-        var status = new StatusViewModel(TaskKind.Importing, "Importing", $"{job.Volume.Name} → {job.Title}", CancelImportCommand);
+        var status = new StatusViewModel(TaskKind.Importing, Loc.T("Importing"), $"{job.Volume.Name} → {job.Title}", CancelImportCommand);
         AddTask(status, first: true);
         var options = new BackupOptions(VerifyCopies: Settings.VerifyCopies);
         // Projects moved to another drive are imported there; if it isn't connected, the copy stops with "connect the drive".
@@ -509,7 +541,7 @@ public sealed class AppModel : ObservableObject, IDisposable
                 using var awake = KeepAwake.Begin();
                 return new BackupEngine(options).Copy(job.Plan.Items, job.Volume.Root, destination, job.Plan.FoldersToCreate,
                     progress: p => _dispatcher.InvokeAsync(() =>
-                        status.ShowCopyProgress(p, "Checking the project folders…", "Everything is already in the project.")),
+                        status.ShowCopyProgress(p, Loc.T("Checking the project folders…"), Loc.T("Everything is already in the project."))),
                     cancellation: cancellation.Token);
             });
         }
@@ -548,15 +580,16 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (result.IsComplete)
         {
             Record(Outcome.Completed, job.Title, job.Volume, result, job.PrimaryFolder);
-            Notify("Import complete", $"Copied {copied} from “{job.Volume.Name}” into {job.Title}.");
+            Notify(Loc.T("Import complete"), Loc.F("Copied {0} from “{1}” into {2}.", copied, job.Volume.Name, job.Title));
             var moreForThisCard = _importQueue.Any(j => j.Volume.Id == job.Volume.Id) || _drafts.Any(d => d.Volume.Id == job.Volume.Id);
             if (Settings.EjectWhenDone && !moreForThisCard) Eject(job.Volume, announce: true);
         }
         else
         {
             Record(Outcome.CompletedWithErrors, job.Title, job.Volume, result, job.PrimaryFolder);
-            Notify("Import finished with problems",
-                $"Copied {copied} into {job.Title}, but {Format.Count(result.Failures.Count, "file")} couldn’t be copied. Open the log for details.");
+            Notify(Loc.T("Import finished with problems"), Loc.Plural(result.Failures.Count,
+                "Copied {1} into {2}, but {0:N0} file couldn’t be copied. Open the log for details.",
+                "Copied {1} into {2}, but {0:N0} files couldn’t be copied. Open the log for details.", copied, job.Title));
         }
     }
 
@@ -579,7 +612,7 @@ public sealed class AppModel : ObservableObject, IDisposable
                 break;
             case PhotoAppOpenResult.NotInstalled:
                 Log.Write($"{title} isn’t installed, so the {photos} weren’t opened in it.");
-                Notify($"{title} not found", $"Notch couldn’t find {title} on this PC, so the new photos weren’t opened in it. You can choose another app in Settings.");
+                Notify(Loc.F("{0} not found", title), Loc.F("Notch couldn’t find {0} on this PC, so the new photos weren’t opened in it. You can choose another app in Settings.", title));
                 break;
             default:
                 Log.Write($"Couldn’t open the {photos} in {title}: {error}");
@@ -594,21 +627,21 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (error is OperationCanceledException)
         {
             outcome = Outcome.Cancelled;
-            message = _importStopReason ?? "Cancelled. Files copied so far were kept.";
+            message = _importStopReason ?? Loc.T("Cancelled. Files copied so far were kept.");
         }
         else if (error is BackupException { Kind: BackupErrorKind.SourceDisappeared })
         {
             outcome = Outcome.Failed;
-            message = "The card was removed before the import finished. Insert it again to finish.";
+            message = Loc.T("The card was removed before the import finished. Insert it again to finish.");
         }
         else
         {
             outcome = Outcome.Failed;
-            message = error?.Message ?? "Unknown error.";
+            message = error?.Message ?? Loc.T("Unknown error.");
         }
         Log.Write($"Import of “{job.Volume.DisplayName}” into {job.Title} stopped: {message}");
         Record(outcome, job.Title, job.Volume, null, job.PrimaryFolder, message);
-        Notify(outcome == Outcome.Cancelled ? "Import stopped" : "Import failed", message);
+        Notify(outcome == Outcome.Cancelled ? Loc.T("Import stopped") : Loc.T("Import failed"), message);
     }
 
     // ------------------------------------------------------------------ Moving a year
@@ -623,11 +656,11 @@ public sealed class AppModel : ObservableObject, IDisposable
         }
     }
 
-    public IReadOnlyList<EnumChoice<bool>> YearSourceChoices { get; } = [new(false, "Photos folder"), new(true, "Videos folder")];
+    public IReadOnlyList<EnumChoice<bool>> YearSourceChoices { get; } = [new(false, Loc.T("Photos folder")), new(true, Loc.T("Videos folder"))];
 
     public string NoYearsText => YearsFromVideos
-        ? "There are no year folders in the videos folder yet."
-        : "There are no year folders in the projects folder yet.";
+        ? Loc.T("There are no year folders in the videos folder yet.")
+        : Loc.T("There are no year folders in the projects folder yet.");
 
     private string YearsRoot => YearsFromVideos ? Settings.SeparateVideosFolder! : Settings.ProjectsFolder;
 
@@ -663,29 +696,29 @@ public sealed class AppModel : ObservableObject, IDisposable
         var yearText = year.ToString("0000", System.Globalization.CultureInfo.InvariantCulture);
         if (_activeJob is not null || _importQueue.Count > 0)
         {
-            _dialogs.Alert("Wait for the import to finish", $"{yearText} can be moved once the current import is done.");
+            _dialogs.Alert(Loc.T("Wait for the import to finish"), Loc.F("{0} can be moved once the current import is done.", yearText));
             return;
         }
 
         var destinationRoot = _dialogs.PickFolder(
-            $"Choose a folder on the drive to move {yearText} to (for example a Projects folder on your SSD)",
+            Loc.F("Choose a folder on the drive to move {0} to (for example a Projects folder on your SSD)", yearText),
             Settings.LastMigrationPath);
         if (destinationRoot is null) return;
         var sourceRoot = YearsRoot;
         if (PathUtil.AreSame(destinationRoot, sourceRoot))
         {
-            _dialogs.Alert("Choose another folder", $"{yearText} is already in that folder. Pick a folder on the other drive.");
+            _dialogs.Alert(Loc.T("Choose another folder"), Loc.F("{0} is already in that folder. Pick a folder on the other drive.", yearText));
             return;
         }
 
         var driveName = DriveName(destinationRoot);
         var target = Path.Combine(destinationRoot, yearText);
         var confirmed = _dialogs.Confirm(
-            $"Move {yearText} to “{driveName}”?",
-            $"Everything in {Path.Combine(sourceRoot, yearText)}, including photos, videos and editing projects, is copied to {target}. Each file is checked against the original and then deleted from this PC.\n\n" +
-            $"Projects from {yearText} will open from “{driveName}” from now on. New projects still go to this PC. " +
-            "Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.",
-            "Move");
+            Loc.F("Move {0} to “{1}”?", yearText, driveName),
+            Loc.F("Everything in {0}, including photos, videos and editing projects, is copied to {1}. Each file is checked against the original and then deleted from this PC.", Path.Combine(sourceRoot, yearText), target)
+            + "\n\n"
+            + Loc.F("Projects from {0} will open from “{1}” from now on. New projects still go to this PC. Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.", yearText, driveName),
+            Loc.T("Move"));
         if (!confirmed) return;
 
         Settings.LastMigrationPath = destinationRoot;
@@ -705,16 +738,16 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     private void CancelMigration()
     {
-        _migrationStopReason = "Stopped. Files already moved are on the drive and the rest are still on this PC. Move the year again to finish.";
+        _migrationStopReason = Loc.T("Stopped. Files already moved are on the drive and the rest are still on this PC. Move the year again to finish.");
         _migrationCancel?.Cancel();
     }
 
     private async void StartMigration(int year, string sourceRoot, string destinationRoot, string driveName)
     {
         var yearText = year.ToString("0000", System.Globalization.CultureInfo.InvariantCulture);
-        var status = new StatusViewModel(TaskKind.Moving, $"Moving {yearText}", $"To “{driveName}”", CancelMigrationCommand)
+        var status = new StatusViewModel(TaskKind.Moving, Loc.F("Moving {0}", yearText), Loc.F("To “{0}”", driveName), CancelMigrationCommand)
         {
-            Note = "Each file is deleted from this PC once its copy is verified.",
+            Note = Loc.T("Each file is deleted from this PC once its copy is verified."),
         };
         _migrationStatus = status;
         _migrationStopReason = null;
@@ -723,7 +756,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         var cancellation = new CancellationTokenSource();
         _migrationCancel = cancellation;
         Log.Write($"Moving {yearText} from {sourceRoot} to {destinationRoot}");
-        Notify($"Moving {yearText} to “{driveName}”", "Keep the drive connected until it’s finished.");
+        Notify(Loc.F("Moving {0} to “{1}”", yearText, driveName), Loc.T("Keep the drive connected until it’s finished."));
 
         MigrationResult? result = null;
         Exception? failure = null;
@@ -733,7 +766,7 @@ public sealed class AppModel : ObservableObject, IDisposable
             {
                 using var awake = KeepAwake.Begin();
                 return YearMigrator.MoveYear(year, sourceRoot, destinationRoot,
-                    p => _dispatcher.InvokeAsync(() => status.ShowCopyProgress(p, "Checking what’s already on the drive…", "Everything is already on the drive.")),
+                    p => _dispatcher.InvokeAsync(() => status.ShowCopyProgress(p, Loc.T("Checking what’s already on the drive…"), Loc.T("Everything is already on the drive."))),
                     cancellation.Token);
             });
         }
@@ -760,21 +793,21 @@ public sealed class AppModel : ObservableObject, IDisposable
             RecordMigration(result.IsComplete ? Outcome.Completed : Outcome.CompletedWithErrors, yearText, driveName, result.Destination, result, null);
             if (result.IsComplete)
             {
-                Notify($"{yearText} moved to “{driveName}”", $"Moved {moved}. Projects from {yearText} now open from the drive.");
+                Notify(Loc.F("{0} moved to “{1}”", yearText, driveName), Loc.F("Moved {0}. Projects from {1} now open from the drive.", moved, yearText));
             }
             else
             {
-                Notify($"{yearText} moved, with exceptions",
-                    $"Moved {moved}. {Format.Count(result.Failures.Count + result.ItemsLeftBehind, "item")} stayed on this PC. Open the log for details.");
+                Notify(Loc.F("{0} moved, with exceptions", yearText), Loc.F("Moved {0}.", moved) + " " + Loc.Plural(result.Failures.Count + result.ItemsLeftBehind,
+                    "{0:N0} item stayed on this PC. Open the log for details.", "{0:N0} items stayed on this PC. Open the log for details."));
             }
         }
         else
         {
             var cancelled = failure is OperationCanceledException;
-            var message = cancelled ? _migrationStopReason ?? "Stopped. Move the year again to finish." : failure?.Message ?? "Unknown error.";
+            var message = cancelled ? _migrationStopReason ?? Loc.T("Stopped. Move the year again to finish.") : failure?.Message ?? Loc.T("Unknown error.");
             Log.Write($"Moving {yearText} stopped: {message}");
             RecordMigration(cancelled ? Outcome.Cancelled : Outcome.Failed, yearText, driveName, Path.Combine(destinationRoot, yearText), null, message);
-            Notify(cancelled ? "Move stopped" : $"Couldn’t move {yearText}", message);
+            Notify(cancelled ? Loc.T("Move stopped") : Loc.F("Couldn’t move {0}", yearText), message);
         }
         _migrationStopReason = null;
         RefreshYears();
@@ -806,7 +839,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     private void RecordMigration(Outcome outcome, string yearText, string driveName, string folder, MigrationResult? result, string? message) =>
         AppendHistory(new HistoryEntry
         {
-            Title = $"Moved {yearText}",
+            Title = Loc.F("Moved {0}", yearText),
             CardName = driveName,
             Outcome = outcome,
             Kind = HistoryKind.Migration,
@@ -859,11 +892,11 @@ public sealed class AppModel : ObservableObject, IDisposable
         var error = await Ejector.EjectAsync(volume.Root);
         if (error is null)
         {
-            if (announce) Notify($"“{volume.Name}” ejected", "It’s safe to remove the card.");
+            if (announce) Notify(Loc.F("“{0}” ejected", volume.Name), Loc.T("It’s safe to remove the card."));
         }
         else
         {
-            Notify($"Couldn’t eject “{volume.Name}”", error);
+            Notify(Loc.F("Couldn’t eject “{0}”", volume.Name), error);
         }
         RefreshCards();
     }
@@ -892,20 +925,26 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     // ------------------------------------------------------------------ Folder structure
 
-    /// <summary>An editor for the folder structure new projects get in the projects folder (Settings › Folder structure…).</summary>
-    public FolderStructureEditor CreateFolderStructureEditor() =>
-        new(Library.Structure(Settings.ProjectsFolder), SaveFolderStructure);
+    /// <summary>An editor for the structures new projects' photos and videos get (Settings › Folder structure…).</summary>
+    public FolderStructuresEditor CreateFolderStructureEditor() =>
+        new(FolderStructureFor(FolderStructure.Branch.Photo), FolderStructureFor(FolderStructure.Branch.Video), HasSeparateFolders, SaveFolderStructures);
 
-    /// <summary>Saves the structure for new projects; alerts and returns false when the projects folder can't be written.</summary>
-    private bool SaveFolderStructure(FolderStructure structure)
+    /// <summary>Saves the structures for new projects; alerts and returns false when a projects folder can't be written.</summary>
+    private bool SaveFolderStructures(FolderStructure photo, FolderStructure video)
     {
-        if (!Library.SetStructure(structure, Settings.ProjectsFolder))
+        var photoRoot = DefaultRoot(FolderStructure.Branch.Photo);
+        var videoRoot = DefaultRoot(FolderStructure.Branch.Video);
+        if (!Library.SetStructure(photo, FolderStructure.Branch.Photo, photoRoot) || !Library.SetStructure(video, FolderStructure.Branch.Video, videoRoot))
         {
-            _dialogs.Alert("The folder structure wasn’t saved",
-                $"{Settings.ProjectsFolder} can’t be written. If it’s on an external drive, connect it and try again.");
+            var folders = HasSeparateFolders ? $"{photoRoot} / {videoRoot}" : photoRoot;
+            _dialogs.Alert(Loc.T("The folder structure wasn’t saved"),
+                Loc.F("{0} can’t be written. If it’s on an external drive, connect it and try again.", folders));
             return false;
         }
-        Log.Write(structure.Summary.Select(line => "    " + line).Prepend($"Folder structure for new projects in {Settings.ProjectsFolder}:"));
+        Log.Write(
+            "Folder structure for new projects:",
+            $"    Photos ({photoRoot}): {string.Join("\\", photo.ExamplePath(FolderStructure.Branch.Photo))}",
+            $"    Videos ({videoRoot}): {string.Join("\\", video.ExamplePath(FolderStructure.Branch.Video))}");
         OnPropertyChanged(nameof(FolderStructureSummary));
         return true;
     }
@@ -913,24 +952,30 @@ public sealed class AppModel : ObservableObject, IDisposable
     /// <summary>Settings › Videos: a separate projects folder for videos. New projects put their videos there.</summary>
     private void ChangeVideosFolder()
     {
-        var folder = _dialogs.PickFolder("Choose a folder for videos. Videos of new projects go here, in the same folder structure as the photos.",
+        var folder = _dialogs.PickFolder(Loc.T("Choose a folder for videos. Videos of new projects go here, with their own folder structure."),
             Settings.SeparateVideosFolder ?? Settings.ProjectsFolder);
         if (folder is null) return;
         Settings.VideosFolder = PathUtil.AreSame(folder, Settings.ProjectsFolder) ? "" : folder;
         if (Settings.SeparateVideosFolder is { } videos) Library.Library(videos);
     }
 
+    /// <summary>What import drafts ask this model for.</summary>
+    private ImportDraftServices DraftServices => new(ChooseFolder, branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot);
+
     /// <summary>
-    /// Import panel › "New project in a folder…": asks for a folder. The folder of a project Notch knows adds the day to
-    /// that project; any other folder gets the new project's folder inside it.
+    /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in. The folder of a project
+    /// Notch knows adds the day to that project instead.
     /// </summary>
-    private void ChooseProjectFolder(ImportDraftViewModel draft, ShootDay day)
+    private void ChooseFolder(ImportDraftViewModel draft, ShootDay day, FolderStructure.Branch branch)
     {
         string? folder;
         PanelDialogOpen?.Invoke(true);
         try
         {
-            folder = _dialogs.PickFolder("New project in a folder (or choose a project's own folder to add to it)", Settings.ProjectsFolder);
+            var title = branch == FolderStructure.Branch.Photo
+                ? Loc.T("Where should the photos go? Notch makes the project’s folder (date and name) inside the folder you choose.")
+                : Loc.T("Where should the videos go? Notch makes the project’s folder (date and name) inside the folder you choose.");
+            folder = _dialogs.PickFolder(title, draft.FolderFor(day, branch) ?? DefaultRoot(branch));
         }
         finally
         {
@@ -939,12 +984,39 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (folder is null) return;
         Library.RefreshLocations();
         if (Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
-        else draft.SetChoice(day, DayChoice.NewProjectIn(PathUtil.Normalize(folder)));
+        else draft.SetFolder(day, branch, PathUtil.Normalize(folder));
+    }
+
+    // ------------------------------------------------------------------ Multi-day shoots
+
+    /// <summary>Settings › Multi-day shoots.</summary>
+    public ObservableCollection<ShootViewModel> Shoots { get; } = [];
+
+    public bool HasShoots => Shoots.Count > 0;
+
+    /// <summary>The import panel's or Settings' "hold to finish": the shoot leaves the import panel.</summary>
+    public void FinishShoot(Guid id)
+    {
+        if (Library.Shoots.Shoot(id) is not { } shoot) return;
+        Library.Shoots.Finish(id);
+        Log.Write($"Finished the multi-day shoot “{shoot.Name}”");
+    }
+
+    public void ReopenShoot(Guid id) => Library.Shoots.Reopen(id);
+
+    public void RefreshShoots()
+    {
+        Shoots.Clear();
+        foreach (var shoot in Library.Shoots.All.OrderByDescending(s => s.LastUsed))
+        {
+            Shoots.Add(new ShootViewModel(shoot, new RelayCommand(() => FinishShoot(shoot.Id)), new RelayCommand(() => ReopenShoot(shoot.Id))));
+        }
+        OnPropertyChanged(nameof(HasShoots));
     }
 
     private void ChangeProjectsFolder()
     {
-        var folder = _dialogs.PickFolder("Choose the projects folder. Year folders (2026, 2027, …) with your projects inside are created here.",
+        var folder = _dialogs.PickFolder(Loc.T("Choose the projects folder. Year folders (2026, 2027, …) with your projects inside are created here."),
             Settings.ProjectsFolder);
         if (folder is null) return;
         Settings.ProjectsFolder = folder;
@@ -953,28 +1025,30 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     private void ForgetImportedFiles()
     {
-        if (_dialogs.Confirm("Forget which files were imported?",
-                "Every file on every card will be offered for import again. Files that are already in a project folder are still skipped when you pick the same project.",
-                "Forget"))
+        if (_dialogs.Confirm(Loc.T("Forget which files were imported?"),
+                Loc.T("Every file on every card will be offered for import again. Files that are already in a project folder are still skipped when you pick the same project."),
+                Loc.T("Forget")))
         {
             Library.ForgetImports();
         }
     }
 
-    private void Quit()
+    /// <summary>Quits, or restarts in another language; asks first while a card is being read or imported or a year moved.</summary>
+    private void Leave(bool restart)
     {
         if (IsBusy)
         {
             var (title, message) = _migrationStatus is not null
-                ? ("A year is being moved", "If you quit now, files already moved stay on the drive and the rest stay on this PC. Move the year again to finish.")
-                : (_activeJob is not null ? "An import is in progress" : "A card is being read",
-                   "If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted.");
-            if (!_dialogs.Confirm(title, message, "Quit")) return;
+                ? (Loc.T("A year is being moved"), Loc.T("If you quit now, files already moved stay on the drive and the rest stay on this PC. Move the year again to finish."))
+                : (_activeJob is not null ? Loc.T("An import is in progress") : Loc.T("A card is being read"),
+                   Loc.T("If you quit now, files copied so far are kept, and you can import the rest the next time the card is inserted."));
+            if (!_dialogs.Confirm(title, message, restart ? Loc.T("Restart") : Loc.T("Quit"))) return;
             _importCancel?.Cancel();
             _analysisCancel?.Cancel();
             _migrationCancel?.Cancel();
         }
-        QuitRequested?.Invoke();
+        if (restart) RestartRequested?.Invoke();
+        else QuitRequested?.Invoke();
     }
 
     // ------------------------------------------------------------------ Helpers
@@ -1048,19 +1122,21 @@ public sealed class AppModel : ObservableObject, IDisposable
             new() { Name = "Product Shoot", StartDay = new ShootDay(2026, 10, 14), RootPath = Settings.ProjectsFolder },
             new() { Name = "Portraits Maja", StartDay = new ShootDay(2026, 10, 9), RootPath = "" },
         };
-        var draft = new ImportDraftViewModel(volume, analysis, recent, names, _ => { }, _ => { }, (_, _) => { });
+        Library.Shoots.Finish(Library.Shoots.Start("Poroka Novak 2025").Id);
+        var shoot = Library.Shoots.Start("AMD Koledar 2026");
+        var draft = new ImportDraftViewModel(volume, analysis, recent, [shoot], names, _ => { }, _ => { }, ImportDraftServices.None);
         draft.Days[0].ProjectName = "Ana Wedding";
         _drafts.Add(draft);
         _drafts.Add(draft);
 
-        var importing = new StatusViewModel(TaskKind.Importing, "Importing", "EOS_DIGITAL → Ana Wedding", CancelImportCommand)
+        var importing = new StatusViewModel(TaskKind.Importing, Loc.T("Importing"), "EOS_DIGITAL → Ana Wedding", CancelImportCommand)
         {
             CopyStartedAt = DateTime.UtcNow.AddMinutes(-2),
         };
         importing.ShowCopyProgress(new BackupProgress(BackupPhase.Copying, 1950, 1204, 20_100_000_000, 12_400_000_000, 3, "DCIM/100CANON/IMG_1204.CR3"),
             "", "");
         Tasks.Add(importing);
-        Tasks.Add(new StatusViewModel(TaskKind.Reading, "Reading card", "Untitled (F:)", CancelAnalysisCommand) { Line1Left = "Looking for photos and videos…" });
+        Tasks.Add(new StatusViewModel(TaskKind.Reading, Loc.T("Reading card"), "Untitled (F:)", CancelAnalysisCommand) { Line1Left = Loc.T("Looking for photos and videos…") });
 
         _history.Clear();
         _history.Add(new HistoryEntry { Title = "Ana Wedding", CardName = "EOS_DIGITAL", CardId = "1A2B-3C4D", Outcome = Outcome.Completed, FilesCopied = 312, BytesCopied = 4_100_000_000, Date = DateTime.UtcNow.AddDays(-1) });

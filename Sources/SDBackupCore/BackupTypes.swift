@@ -133,25 +133,25 @@ public enum BackupError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return "macOS denied access to the card. Allow access to removable volumes in System Settings › Privacy & Security › Files and Folders."
+            return String(localized: "macOS denied access to the card. Allow access to removable volumes in System Settings › Privacy & Security › Files and Folders.")
         case let .sourceUnreadable(path, reason):
-            return "Couldn’t read \(path): \(reason)"
+            return String(localized: "Couldn’t read \(path): \(reason)")
         case .sourceDisappeared:
-            return "The card was removed before the backup finished."
+            return String(localized: "The card was removed before the backup finished.")
         case let .destinationUnavailable(path):
-            return "The backup folder \(path) isn’t available. If it’s on an external drive, connect the drive and try again."
+            return String(localized: "The folder \(path) isn’t available. If it’s on an external drive, connect the drive and try again.")
         case .destinationInsideSource:
-            return "The destination is inside the folder being copied. Choose a folder on another drive."
+            return String(localized: "The destination is inside the folder being copied. Choose a folder on another drive.")
         case .destinationIsSource:
-            return "The destination is the same folder as the source. Choose a folder on the other drive."
+            return String(localized: "The destination is the same folder as the source. Choose a folder on the other drive.")
         case let .insufficientSpace(needed, available):
-            return "Not enough free space in the backup folder: \(Self.format(needed)) needed, \(Self.format(available)) available."
+            return String(localized: "Not enough free space: \(Self.format(needed)) needed, \(Self.format(available)) available.")
         case let .sizeMismatch(expected, actual):
-            return "The file changed while it was being copied (expected \(expected) bytes, read \(actual))."
+            return String(localized: "The file changed while it was being copied (expected \(expected) bytes, read \(actual)).")
         case .verificationFailed:
-            return "The copy didn’t match the original when it was verified."
+            return String(localized: "The copy didn’t match the original when it was verified.")
         case .tooManyNameCollisions:
-            return "Too many different files with this name already exist in the backup."
+            return String(localized: "Too many different files with this name already exist in the destination.")
         }
     }
 

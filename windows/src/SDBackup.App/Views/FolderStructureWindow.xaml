@@ -1,9 +1,10 @@
 <Window x:Class="SDBackup.App.FolderStructureWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Folder structure"
+        xmlns:l="clr-namespace:SDBackup.App"
+        Title="{l:T 'Folder structure'}"
         Width="560"
-        Height="760"
+        Height="780"
         MinWidth="460"
         MinHeight="420"
         WindowStartupLocation="CenterOwner"
@@ -13,7 +14,10 @@
         FontSize="13"
         UseLayoutRounding="True">
 
-    <!-- DataContext: SDBackup.Windows.FolderStructureEditor. -->
+    <!--
+        DataContext: SDBackup.Windows.FolderStructuresEditor. The Photos and Videos tabs each show one
+        FolderStructureEditor (its Current), with the pane below as their template.
+    -->
     <Window.Resources>
         <DataTemplate x:Key="ChoiceTemplate">
             <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
@@ -24,194 +28,218 @@
         <!-- ============================================================ Buttons -->
         <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SurfaceStrokeBrush}" Padding="20,12">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Save" MinWidth="88" Margin="8,0,0,0"
+                <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="{l:T 'Save'}" MinWidth="88" Margin="8,0,0,0"
                         IsDefault="True" Command="{Binding SaveCommand}" />
-                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Cancel" MinWidth="88" IsCancel="True" />
-                <Button Style="{StaticResource SubtleButton}" Content="Reset to standard" HorizontalAlignment="Left"
-                        Command="{Binding ResetCommand}" />
+                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{l:T 'Cancel'}" MinWidth="88" IsCancel="True" />
+                <Button Style="{StaticResource SubtleButton}" HorizontalAlignment="Left"
+                        Content="{Binding Current.ResetLabel}" Command="{Binding Current.ResetCommand}" />
             </DockPanel>
         </Border>
 
+        <!-- ============================================================ Title and tabs -->
+        <StackPanel DockPanel.Dock="Top" Margin="20,16,20,0">
+            <TextBlock Text="{l:T 'Folder structure'}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,0,0,12"
+                       Text="{l:T 'Photos and videos each have their own structure for new projects. Existing projects keep their folders.'}" />
+            <Border Background="{DynamicResource SubtleBrush}" CornerRadius="6" Padding="2" Margin="0,0,0,4">
+                <UniformGrid Columns="2">
+                    <RadioButton Style="{StaticResource SegmentTab}" GroupName="StructureTab" Content="{l:T 'Photos'}"
+                                 AutomationProperties.Name="{l:T 'Photos'}" IsChecked="{Binding ShowPhotos, Mode=TwoWay}" />
+                    <RadioButton Style="{StaticResource SegmentTab}" GroupName="StructureTab" Content="{l:T 'Videos'}"
+                                 AutomationProperties.Name="{l:T 'Videos'}" IsChecked="{Binding ShowVideos, Mode=TwoWay}" />
+                </UniformGrid>
+            </Border>
+        </StackPanel>
+
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="20,16,20,20">
-                <TextBlock Text="Folder structure" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,0,4" />
-                <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,0,0,16"
-                           Text="Choose how new projects are laid out in the projects folder. Existing projects keep their folders." />
-
-                <!-- ============================================================ Levels -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="Folders, from the top" />
-                <Border Style="{StaticResource Card}" Margin="0,0,0,20">
-                    <StackPanel>
-                        <DockPanel Margin="0,0,0,10" Background="Transparent"
-                                   ToolTip="The year always comes first, so a whole year can be moved to another drive.">
-                            <TextBlock DockPanel.Dock="Right" Style="{StaticResource CaptionText}" Text="2026" VerticalAlignment="Center" />
-                            <TextBlock Style="{StaticResource TitleText}" Text="Year" />
-                        </DockPanel>
-
-                        <ItemsControl ItemsSource="{Binding Levels}" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeBrush}" Padding="0,10">
-                                        <StackPanel>
-                                            <DockPanel>
-                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                                    <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="Move up"
-                                                            AutomationProperties.Name="Move up" Command="{Binding MoveUpCommand}">
-                                                        <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE70E;" />
-                                                    </Button>
-                                                    <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="Move down"
-                                                            AutomationProperties.Name="Move down" Command="{Binding MoveDownCommand}">
-                                                        <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE70D;" />
-                                                    </Button>
-                                                    <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="{Binding RemoveToolTip}"
-                                                            ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Remove"
-                                                            Command="{Binding RemoveCommand}">
-                                                        <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE738;" />
-                                                    </Button>
-                                                </StackPanel>
-                                                <TextBlock Style="{StaticResource TitleText}" Text="{Binding Title}" VerticalAlignment="Center" />
-                                            </DockPanel>
-
-                                            <!-- Photo / Video -->
-                                            <Grid Margin="0,8,0,0" Visibility="{Binding IsMediaType, Converter={StaticResource BoolToVisible}}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition />
-                                                    <ColumnDefinition Width="8" />
-                                                    <ColumnDefinition />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox Style="{StaticResource FieldBox}" ToolTip="Folder for photos" AutomationProperties.Name="Photo folder"
-                                                         Text="{Binding Photo, UpdateSourceTrigger=PropertyChanged}" />
-                                                <TextBox Grid.Column="2" Style="{StaticResource FieldBox}" ToolTip="Folder for videos" AutomationProperties.Name="Video folder"
-                                                         Text="{Binding Video, UpdateSourceTrigger=PropertyChanged}" />
-                                            </Grid>
-
-                                            <!-- Month -->
-                                            <Grid Margin="0,8,0,0" Visibility="{Binding IsMonth, Converter={StaticResource BoolToVisible}}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition />
-                                                    <ColumnDefinition Width="8" />
-                                                    <ColumnDefinition />
-                                                </Grid.ColumnDefinitions>
-                                                <ComboBox Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="Month style"
-                                                          ItemsSource="{Binding MonthStyleChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
-                                                          SelectedValuePath="Value" SelectedValue="{Binding MonthStyle, Mode=TwoWay}" />
-                                                <ComboBox Grid.Column="2" Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="Month names"
-                                                          ItemsSource="{Binding MonthLanguageChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
-                                                          SelectedValuePath="Value" SelectedValue="{Binding MonthLanguage, Mode=TwoWay}" />
-                                            </Grid>
-
-                                            <!-- A fixed name -->
-                                            <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" AutomationProperties.Name="Folder name"
-                                                     Visibility="{Binding IsText, Converter={StaticResource BoolToVisible}}"
-                                                     Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
-
-                                            <!-- Unedited / Exported -->
-                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsSplit, Converter={StaticResource BoolToVisible}}">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition />
-                                                        <ColumnDefinition Width="8" />
-                                                        <ColumnDefinition />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBox Style="{StaticResource FieldBox}" ToolTip="Imports go into this folder" AutomationProperties.Name="Unedited folder"
-                                                             Text="{Binding Unedited, UpdateSourceTrigger=PropertyChanged}" />
-                                                    <TextBox Grid.Column="2" Style="{StaticResource FieldBox}" ToolTip="Made empty, for your exports" AutomationProperties.Name="Exported folder"
-                                                             Text="{Binding Exported, UpdateSourceTrigger=PropertyChanged}" />
-                                                </Grid>
-                                                <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,6,0,0"
-                                                           Text="Imports go into the first folder; the second is made beside it, empty, for your exports." />
-                                            </StackPanel>
-
-                                            <!-- Project -->
-                                            <Grid Margin="0,8,0,0" Visibility="{Binding IsProject, Converter={StaticResource BoolToVisible}}">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition />
-                                                    <ColumnDefinition Width="8" />
-                                                    <ColumnDefinition />
-                                                </Grid.ColumnDefinitions>
-                                                <ComboBox Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="Date format"
-                                                          ItemsSource="{Binding DateFormatChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
-                                                          SelectedValuePath="Value" SelectedValue="{Binding DateFormat, Mode=TwoWay}" />
-                                                <ComboBox Grid.Column="2" Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="Order"
-                                                          ItemsSource="{Binding NameOrderChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
-                                                          SelectedValuePath="Value" SelectedValue="{Binding NameOrder, Mode=TwoWay}" />
-                                            </Grid>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <WrapPanel Margin="0,10,0,0">
-                            <Button Style="{StaticResource SubtleButton}" Content="+ Photo / Video" Margin="0,0,6,6" Command="{Binding AddMediaTypeCommand}" />
-                            <Button Style="{StaticResource SubtleButton}" Content="+ Month" Margin="0,0,6,6" Command="{Binding AddMonthCommand}" />
-                            <Button Style="{StaticResource SubtleButton}" Content="+ Fixed name" Margin="0,0,6,6" Command="{Binding AddFolderCommand}" />
-                            <Button Style="{StaticResource SubtleButton}" Content="+ Unedited / Exported" Margin="0,0,6,6" Command="{Binding AddSplitCommand}" />
-                        </WrapPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- ============================================================ Files -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="Files" />
-                <Border Style="{StaticResource Card}" Margin="0,0,0,20">
-                    <StackPanel>
-                        <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding CameraFolders}">
-                            <TextBlock Style="{StaticResource BodyText}" Text="A folder for each camera" />
-                        </CheckBox>
-
-                        <TextBlock Style="{StaticResource BodyText}" Text="Folders in each video project" Margin="0,14,0,6" />
-                        <ItemsControl ItemsSource="{Binding VideoFolders}" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,0,0,6">
-                                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Margin="6,0,0,0" ToolTip="Remove this folder"
-                                                AutomationProperties.Name="Remove folder" Command="{Binding RemoveCommand}">
-                                            <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE738;" />
-                                        </Button>
-                                        <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="Folder name"
-                                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+            <ContentControl Content="{Binding Current}" Focusable="False">
+                <ContentControl.ContentTemplate>
+                    <!-- DataContext: SDBackup.Windows.FolderStructureEditor (the photos' or the videos'). -->
+                    <DataTemplate>
+                        <StackPanel Margin="20,12,20,20">
+                            <!-- ============================================================ Levels -->
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Folders, from the top'}" />
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,6">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,10" Background="Transparent"
+                                               ToolTip="{l:T 'The year always comes first, so a whole year can be moved to another drive.'}">
+                                        <TextBlock DockPanel.Dock="Right" Style="{StaticResource CaptionText}" Text="2026" VerticalAlignment="Center" />
+                                        <TextBlock Style="{StaticResource TitleText}" Text="{l:T 'Year'}" />
                                     </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <Button Style="{StaticResource SubtleButton}" Content="+ Folder" HorizontalAlignment="Left" Command="{Binding AddVideoFolderCommand}" />
 
-                        <DockPanel Margin="0,14,0,0">
-                            <ComboBox DockPanel.Dock="Right" Style="{StaticResource PickerBox}" Width="200" MinHeight="32"
-                                      AutomationProperties.Name="Videos and audio go into"
-                                      ItemsSource="{Binding MediaChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
-                                      SelectedItem="{Binding SelectedMedia, Mode=TwoWay}" />
-                            <TextBlock Style="{StaticResource BodyText}" Text="Videos and audio go into" VerticalAlignment="Center" />
-                        </DockPanel>
-                    </StackPanel>
-                </Border>
+                                    <ItemsControl ItemsSource="{Binding Levels}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource CardStrokeBrush}" Padding="0,10">
+                                                    <StackPanel>
+                                                        <DockPanel>
+                                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                                <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="{l:T 'Move up'}"
+                                                                        AutomationProperties.Name="{l:T 'Move up'}" Command="{Binding MoveUpCommand}">
+                                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE70E;" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="{l:T 'Move down'}"
+                                                                        AutomationProperties.Name="{l:T 'Move down'}" Command="{Binding MoveDownCommand}">
+                                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE70D;" />
+                                                                </Button>
+                                                                <Button Style="{StaticResource IconButton}" Margin="4,0,0,0" ToolTip="{Binding RemoveToolTip}"
+                                                                        ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="{l:T 'Remove'}"
+                                                                        Command="{Binding RemoveCommand}">
+                                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE738;" />
+                                                                </Button>
+                                                            </StackPanel>
+                                                            <TextBlock Style="{StaticResource TitleText}" Text="{Binding Title}" VerticalAlignment="Center" />
+                                                        </DockPanel>
 
-                <!-- ============================================================ Example -->
-                <TextBlock Style="{StaticResource SectionTitle}" Text="Example" />
-                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
-                    <StackPanel>
-                        <ItemsControl ItemsSource="{Binding Examples}" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="0,0,0,8">
-                                        <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Title}" />
-                                        <TextBlock Style="{StaticResource BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
-                                                   Text="{Binding Path}" />
+                                                        <!-- Photo / Video: only this tab's name -->
+                                                        <StackPanel Margin="0,8,0,0" Visibility="{Binding IsMediaType, Converter={StaticResource BoolToVisible}}">
+                                                            <TextBox Style="{StaticResource FieldBox}" ToolTip="{l:T 'Folder for photos'}" AutomationProperties.Name="{l:T 'Photo folder'}"
+                                                                     Visibility="{Binding ShowsPhotoName, Converter={StaticResource BoolToVisible}}"
+                                                                     Text="{Binding Photo, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBox Style="{StaticResource FieldBox}" ToolTip="{l:T 'Folder for videos'}" AutomationProperties.Name="{l:T 'Video folder'}"
+                                                                     Visibility="{Binding ShowsVideoName, Converter={StaticResource BoolToVisible}}"
+                                                                     Text="{Binding Video, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,6,0,0" Text="{Binding MediaTypeNote}" />
+                                                        </StackPanel>
+
+                                                        <!-- Month -->
+                                                        <Grid Margin="0,8,0,0" Visibility="{Binding IsMonth, Converter={StaticResource BoolToVisible}}">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition />
+                                                                <ColumnDefinition Width="8" />
+                                                                <ColumnDefinition />
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="{l:T 'Month style'}"
+                                                                      ItemsSource="{Binding MonthStyleChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
+                                                                      SelectedValuePath="Value" SelectedValue="{Binding MonthStyle, Mode=TwoWay}" />
+                                                            <ComboBox Grid.Column="2" Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="{l:T 'Month names'}"
+                                                                      ItemsSource="{Binding MonthLanguageChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
+                                                                      SelectedValuePath="Value" SelectedValue="{Binding MonthLanguage, Mode=TwoWay}" />
+                                                        </Grid>
+
+                                                        <!-- A fixed name -->
+                                                        <TextBox Margin="0,8,0,0" Style="{StaticResource FieldBox}" AutomationProperties.Name="{l:T 'Folder name'}"
+                                                                 Visibility="{Binding IsText, Converter={StaticResource BoolToVisible}}"
+                                                                 Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                        <!-- Unedited / Exported -->
+                                                        <StackPanel Margin="0,8,0,0" Visibility="{Binding IsSplit, Converter={StaticResource BoolToVisible}}">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition />
+                                                                    <ColumnDefinition Width="8" />
+                                                                    <ColumnDefinition />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBox Style="{StaticResource FieldBox}" ToolTip="{l:T 'Imports go into this folder'}" AutomationProperties.Name="{l:T 'Unedited folder'}"
+                                                                         Text="{Binding Unedited, UpdateSourceTrigger=PropertyChanged}" />
+                                                                <TextBox Grid.Column="2" Style="{StaticResource FieldBox}" ToolTip="{l:T 'Made empty, for your exports'}" AutomationProperties.Name="{l:T 'Exported folder'}"
+                                                                         Text="{Binding Exported, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </Grid>
+                                                            <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,6,0,0"
+                                                                       Text="{l:T 'Imports go into the first folder; the second is made beside it, empty, for your exports.'}" />
+                                                        </StackPanel>
+
+                                                        <!-- Project -->
+                                                        <Grid Margin="0,8,0,0" Visibility="{Binding IsProject, Converter={StaticResource BoolToVisible}}">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition />
+                                                                <ColumnDefinition Width="8" />
+                                                                <ColumnDefinition />
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="{l:T 'Date format'}"
+                                                                      ItemsSource="{Binding DateFormatChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
+                                                                      SelectedValuePath="Value" SelectedValue="{Binding DateFormat, Mode=TwoWay}" />
+                                                            <ComboBox Grid.Column="2" Style="{StaticResource PickerBox}" MinHeight="32" AutomationProperties.Name="{l:T 'Order'}"
+                                                                      ItemsSource="{Binding NameOrderChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
+                                                                      SelectedValuePath="Value" SelectedValue="{Binding NameOrder, Mode=TwoWay}" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <WrapPanel Margin="0,10,0,0">
+                                        <Button Style="{StaticResource SubtleButton}" Content="{Binding AddMediaTypeLabel}" Margin="0,0,6,6" Command="{Binding AddMediaTypeCommand}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="{l:T '+ Month'}" Margin="0,0,6,6" Command="{Binding AddMonthCommand}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="{l:T '+ Fixed name'}" Margin="0,0,6,6" Command="{Binding AddFolderCommand}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="{l:T '+ Unedited / Exported'}" Margin="0,0,6,6" Command="{Binding AddSplitCommand}" />
+                                    </WrapPanel>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Style="{StaticResource WrappedCaptionText}" Margin="0,0,0,20" Text="{Binding FooterText}" />
+
+                            <!-- ============================================================ Files -->
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Files'}" />
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+                                <StackPanel>
+                                    <CheckBox Style="{StaticResource ToggleSwitch}" IsChecked="{Binding CameraFolders}">
+                                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'A folder for each camera'}" />
+                                    </CheckBox>
+
+                                    <!-- Videos only: the folders made in each video project, and where the files go. -->
+                                    <StackPanel Visibility="{Binding IsVideos, Converter={StaticResource BoolToVisible}}">
+                                        <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Folders in each video project'}" Margin="0,14,0,6" />
+                                        <ItemsControl ItemsSource="{Binding VideoFolders}" Focusable="False">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <DockPanel Margin="0,0,0,6">
+                                                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Margin="6,0,0,0" ToolTip="{l:T 'Remove this folder'}"
+                                                                AutomationProperties.Name="{l:T 'Remove folder'}" Command="{Binding RemoveCommand}">
+                                                            <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE738;" />
+                                                        </Button>
+                                                        <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="{l:T 'Folder name'}"
+                                                                 Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </DockPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button Style="{StaticResource SubtleButton}" Content="{l:T '+ Folder'}" HorizontalAlignment="Left" Command="{Binding AddVideoFolderCommand}" />
+
+                                        <DockPanel Margin="0,14,0,0">
+                                            <ComboBox DockPanel.Dock="Right" Style="{StaticResource PickerBox}" Width="200" MinHeight="32"
+                                                      AutomationProperties.Name="{l:T 'Videos and audio go into'}"
+                                                      ItemsSource="{Binding MediaChoices}" ItemTemplate="{StaticResource ChoiceTemplate}"
+                                                      SelectedItem="{Binding SelectedMedia, Mode=TwoWay}" />
+                                            <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'Videos and audio go into'}" VerticalAlignment="Center" />
+                                        </DockPanel>
                                     </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <ItemsControl ItemsSource="{Binding Problems}" Focusable="False">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Style="{StaticResource WrappedCaptionText}" Foreground="{DynamicResource WarningBrush}" Margin="0,0,0,4"
-                                               Text="{Binding}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- ============================================================ Example -->
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Example'}" />
+                            <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <ItemsControl ItemsSource="{Binding Examples}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,8">
+                                                    <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Title}" />
+                                                    <TextBlock Style="{StaticResource BodyText}" FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                                               TextWrapping="Wrap" Text="{Binding Path}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{Binding Problems}" Focusable="False">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Style="{StaticResource WrappedCaptionText}" Foreground="{DynamicResource WarningBrush}" Margin="0,0,0,4"
+                                                           Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <!-- Same names for the Photo and Video folders in one folder (from the window's editor). -->
+                                    <TextBlock Style="{StaticResource WrappedCaptionText}" Foreground="{DynamicResource WarningBrush}"
+                                               DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               Text="{Binding Clash}" Visibility="{Binding Clash, Converter={StaticResource NotNullToVisible}}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
         </ScrollViewer>
     </DockPanel>
 </Window>

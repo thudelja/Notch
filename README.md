@@ -5,9 +5,11 @@
 A macOS menu bar app that imports SD cards straight into organised project folders.
 
 Insert a card. Notch reads it, works out the shoot dates and which cameras were used, and asks
-which project each shoot date belongs to: a new project, one of your last two, or a project in any
-folder you choose. It then copies
-photos and videos into the right year, month, project and camera folders and verifies every copy.
+which project each shoot date belongs to: a new project, a day of a multi-day shoot, or one of your
+last two projects. It then copies photos and videos into the right year, month, project and camera
+folders, each to its own place, and verifies every copy.
+
+Notch speaks **English** and **Slovenian** (*slovensko*: [README.sl.md](README.sl.md)).
 
 **Also on Windows:** a Windows 10/11 version with the same features lives in [`windows/`](windows/).
 It shares the folder layout and the project files, so a projects folder on an exFAT SSD works on
@@ -51,7 +53,9 @@ Projects/
   metadata for video), falling back to the file's date. Importing a week later still files
   everything under the day it was shot.
 - **Photo or Video** is decided by file type. A card with both is split between the two branches,
-  under the same project name.
+  under the same project name. Photos and videos each have their own **destination**: a projects
+  folder and a structure (see below). When both go to the same folder, the `Photo` and `Video`
+  folders keep them apart; with a separate folder for videos, those folders are left out.
 - **A project folder** is named after its first shoot day. Adding a later day to an existing
   project puts the files in that same folder.
 - **Camera folders** are always created, even when only one camera was used, so files never move
@@ -64,21 +68,27 @@ Projects/
 
 ### Your own structure
 
-**Settings › Folder Structure…** changes how new projects are laid out. Below the year folder,
-which always comes first, you build the levels from blocks: **Photo / Video** (rename them or leave
-them out), the **month** (`11 November`, `11` or `November`, English or Slovenian names),
-**folders with a fixed name** such as `Clients`, the **project folder** (`02.11.2026`, `2026-11-02` or
-`20261102`, before or after the name) and an optional **Unedited / Exported** pair. You can also turn
-camera folders off and choose the folders made in each video project. The editor shows example paths
-as you go.
+**Settings › Folder Structure…** changes how new projects are laid out, with a **Photos** and a
+**Videos** tab: photos and videos each have their own structure. Below the year folder, which always
+comes first, you build the levels from blocks: the **Photo** or **Video** folder (rename it or leave it
+out), the **month** (`11 November`, `11` or `November`, English or Slovenian names), **folders with a
+fixed name** such as `Clients`, the **project folder** (`02.11.2026`, `2026-11-02` or `20261102`,
+before or after the name) and an optional **Unedited / Exported** pair. You can also turn camera
+folders off and, on the Videos tab, choose the folders made in each video project. The editor shows
+example paths as you go.
 
 With Unedited / Exported, imports go into the first folder, and an empty Exported folder with the same
-path is made for your exports. For example `2026 › Photo/Video › Unedited/Exported`:
+path is made for your exports. For example, photos with `2026 › Photo › Unedited/Exported › month`
+and videos as standard:
 
 ```
 2026/Photo/Unedited/11 November/02.11.2026 Ana Wedding/R5/IMG_0001.CR3
 2026/Photo/Exported/11 November/02.11.2026 Ana Wedding/      ← empty, for exports
+2026/Video/11 November/02.11.2026 Ana Wedding/Media/R5/C0001.MP4
 ```
+
+A new, empty projects folder starts with the standard structure; on a Mac set to Slovenian, its
+folders get Slovenian names (`Foto`, `Video`, `11 november`; `Posnetki`, `Projekt`, `Viri`, `Izvoz`).
 
 The structure is saved in the projects folder, so the Mac and Windows versions build the same folders
 on a shared drive. **Existing projects never move:** each project keeps the structure it was created
@@ -90,13 +100,16 @@ with, and adding a day to it still puts the files in its folder.
 2. **A notification appears**, and the menu bar icon shows a count of cards waiting.
 3. **Click the Notch icon** (an SD card with a check) in the menu bar. The Import panel lists every shoot date on the card with its
    photo, video and audio counts. For each date, choose:
-   - **New project** and type its name
-   - **New project in a folder…**: choose any folder, for example `2026/AMD Koledar 2026` for a
-     calendar shot over several days, and type a name. Notch makes the project's folder
-     (`02.11.2026 Ana`) inside it, with camera folders for photos and `Media/<camera>` for videos.
-     If you choose the folder of a project Notch already knows, the date is added to that project
-     instead, which is how you reach older projects.
-   - **Same as** another new project on this card (for a multi-day shoot)
+   - **New project** and type its name. Below the name, **Photos → Projects** and
+     **Videos → Projects** show where its files go. **Change…** picks another folder for the photos
+     or the videos (the other keeps its place): Notch makes the project's folder (`02.11.2026 Ana`)
+     inside the folder you choose. If you choose the folder of a project Notch already knows, the
+     date is added to that project instead, which is how you reach older projects.
+   - **New multi-day shoot…** for a shoot over several days or cards, such as a calendar: type the
+     shoot's name (`AMD Koledar 2026`) and the day's project (`Ana`). See
+     [Multi-day shoots](#multi-day-shoots).
+   - **New in “AMD Koledar 2026”**: the next day of an open multi-day shoot.
+   - **Same as** another new project on this card
    - one of your **last two projects**
    - **Skip for now**
 
@@ -118,6 +131,29 @@ you just get a notification. Choose **Not Now** to close the panel; you can star
   video is assumed to come from the camera that shot the card's photos.
 - **Audio, and anything else without camera info:** shown as "No camera info". The name you type
   is remembered for that card, for example "Zoom H5" for a recorder card.
+
+## Multi-day shoots
+
+A multi-day shoot (a calendar, a festival, a series) keeps all its days in one folder. Its folder
+takes the month's place in your structures, and each day is a project inside it:
+
+```
+2026/Photo/AMD Koledar 2026/02.11.2026 Ana/R5/…
+2026/Photo/AMD Koledar 2026/09.11.2026 Maja/R5/…
+2026/Video/AMD Koledar 2026/Media/02.11.2026 Ana/R5/…
+2026/Video/AMD Koledar 2026/Media/09.11.2026 Maja/R5/…
+2026/Video/AMD Koledar 2026/Project/   Assets/   Export/      ← once for the whole shoot
+```
+
+Videos are one editing project for the whole shoot: each day's footage goes into its own folder in
+`Media`. With Unedited / Exported, photos get both, as usual
+(`2026/Photo/Unedited/AMD Koledar 2026/02.11.2026 Ana/…`).
+
+Start one in the Import panel with **New multi-day shoot…**. From then on it's offered above your
+recent projects as **New in “AMD Koledar 2026”**. When the shoot is done, **hold** the
+**Hold to finish** button for 1.5 seconds (a ring fills while you hold; a short animation shows it's
+held, not clicked), in the panel or in **Settings › Multi-day shoots**, where you can also reopen a
+shoot. A shoot that isn't used for 100 days leaves the panel by itself.
 
 ## Moving a year to an SSD
 
@@ -220,8 +256,9 @@ ejected. If macOS says the disk is still in use, eject it again.
 ## Settings
 
 - **Projects folder** for photos and, if you like, a **separate folder for videos** (for example on
-  an SSD). Videos of new projects then go there in the same folder structure; existing projects
-  stay where they are. Also the **folder structure** (see above).
+  an SSD). Videos of new projects then go there, with their own folder structure; existing projects
+  stay where they are. Also the **folder structures** for photos and videos (see above).
+- **Multi-day shoots:** finish or reopen them (see above).
 - **Ask for a project as soon as a card is inserted.**
 - **Which cards count:** SD and camera cards, or any removable drive. External hard drives and
   SSDs are never included.
@@ -230,6 +267,9 @@ ejected. If macOS says the disk is still in use, eject it again.
   importing). The app opens its own import window with the photos from that import; videos
   aren't sent. In Lightroom Classic, choose **Add** to keep the photos where Notch put them.
   Lightroom copies them into its own library and syncs them to Adobe's cloud.
+- **Language:** the Mac's, English or Slovenian (*Slovenščina*). Notch switches when it starts
+  again; **Restart Now** does that for you. You can also set it in **System Settings › General ›
+  Language & Region › Applications**.
 - **Open at login** and **notifications**.
 - **Move a year to another drive** (see above). With a separate videos folder, choose whether to
   move the year from the photos or the videos folder.
@@ -268,11 +308,13 @@ To work in Xcode, run `open Package.swift`.
 | `Sources/SDBackupCore/YearMigrator.swift` | Moves a year folder to another drive, deleting each original after verification. |
 | `Sources/SDBackupCore/ProjectLibrary.swift` | The portable `.sdbackup/library.json` file, and finding projects folders again on any drive. |
 | `Sources/SDBackup/AppModel.swift` | The read → choose project → import flow. |
-| `Sources/SDBackup/ImportDraft.swift` | Your per-date project choices and camera names. |
+| `Sources/SDBackup/ImportDraft.swift` | Your per-date project choices, destinations, multi-day shoots and camera names. |
+| `Sources/SDBackup/MultiDayShoots.swift` | The multi-day shoots: open, finished, last used. |
 | `Sources/SDBackup/LibraryStore.swift` | Saved projects, camera names and import records. |
 | `Sources/SDBackup/VolumeInspector.swift` | Decides whether a mounted volume is an SD/camera card. |
 | `Sources/SDBackup/Views/` | Control Center–style panel and the Settings window (SwiftUI). |
 | `Sources/SDBackup/MenuBarIcon.swift` | The menu bar icon, drawn in code. |
+| `Resources/sl.lproj/` | Slovenian texts, by their English text. `scripts/check-translations.py` (run by CI) checks that every text has one. |
 | `scripts/build-app.sh` | Builds, bundles and ad-hoc signs the `.app`; `--universal --dmg` makes the download. |
 | `branding/make_icons.py` | Draws the logo and writes the Mac and Windows icon files (`python3 branding/make_icons.py`). |
 

@@ -29,6 +29,9 @@ public sealed class LibraryStore
     }
 
     private readonly string? _folder;
+
+    /// <summary>Multi-day shoots, local to this PC.</summary>
+    public MultiDayShootStore Shoots { get; }
     private readonly List<ProjectInfo> _projects = [];
     private readonly Dictionary<Guid, LibraryLocation> _locations = new();
     private CameraNameStore _cameras = new();
@@ -37,6 +40,7 @@ public sealed class LibraryStore
     public LibraryStore(string? folder)
     {
         _folder = folder;
+        Shoots = new MultiDayShootStore(folder is null ? null : Path.Combine(folder, "series.json"));
         if (folder is null) return;
         Directory.CreateDirectory(ImportsFolder!);
         foreach (var location in Json.ReadFile<List<LibraryLocation>>(LibrariesFile!) ?? [])
@@ -59,6 +63,8 @@ public sealed class LibraryStore
     public Guid? Library(string root)
     {
         root = PathUtil.Normalize(root);
+        // A new projects folder keeps the folder names it starts with, whatever language Notch shows later.
+        var named = IsEmptyFolder(root) && FolderStructure.DefaultFor(Loc.Language) is { IsStandard: false } structure ? structure : null;
         if (!Directory.Exists(root))
         {
             // Only create the folder when its parent exists, so an unplugged drive isn't recreated.
@@ -72,7 +78,7 @@ public sealed class LibraryStore
         if (manifest is null)
         {
             var knownId = _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, root))?.LibraryId ?? Guid.NewGuid();
-            manifest = LibraryManifest.Create(knownId, _projects.Where(p => p.LibraryId == knownId));
+            manifest = LibraryManifest.Create(knownId, _projects.Where(p => p.LibraryId == knownId), named, named);
             try { manifest.Write(root); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
         }
@@ -155,22 +161,50 @@ public sealed class LibraryStore
 
     // ------------------------------------------------------------------ Folder structure
 
-    /// <summary>The folder structure new projects in the projects folder at <paramref name="root"/> get.</summary>
-    public FolderStructure Structure(string root) =>
-        LibraryManifest.Read(PathUtil.Normalize(root))?.Layout ?? FolderStructure.Standard;
+    /// <summary>The folder structure new projects' photos or videos in the projects folder at <paramref name="root"/> get.</summary>
+    public FolderStructure Structure(FolderStructure.Branch branch, string root)
+    {
+        root = PathUtil.Normalize(root);
+        if (LibraryManifest.Read(root) is not { } manifest) return IsEmptyFolder(root) ? FolderStructure.DefaultFor(Loc.Language) : FolderStructure.Standard;
+        return branch == FolderStructure.Branch.Photo ? manifest.Layout : manifest.VideoLayout;
+    }
 
     /// <summary>
-    /// Saves the folder structure new projects in the projects folder at <paramref name="root"/> get. Existing projects
-    /// keep theirs. False when the folder isn't available.
+    /// A folder that doesn't exist yet or holds nothing (apart from hidden and system files). Notch hasn't used it, and nothing
+    /// in it has English folder names, so it gets folder names in Notch's language.
     /// </summary>
-    public bool SetStructure(FolderStructure structure, string root)
+    private static bool IsEmptyFolder(string root)
+    {
+        try
+        {
+            return !Directory.Exists(root) || !Directory.EnumerateFileSystemEntries(root).Select(Path.GetFileName).Any(name =>
+                name is { Length: > 0 } && name[0] is not ('.' or '$')
+                && !string.Equals(name, "desktop.ini", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(name, "Thumbs.db", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(name, "System Volume Information", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Saves the folder structure new projects' photos or videos in the projects folder at <paramref name="root"/> get.
+    /// Existing projects keep theirs. False when the folder isn't available.
+    /// </summary>
+    public bool SetStructure(FolderStructure structure, FolderStructure.Branch branch, string root)
     {
         root = PathUtil.Normalize(root);
         if (!structure.IsValid || Library(root) is not Guid libraryId) return false;
         var manifest = LibraryManifest.Read(root) ?? LibraryManifest.Create(libraryId, _projects.Where(p => p.LibraryId == libraryId));
+        manifest = branch == FolderStructure.Branch.Photo
+            // A folder set up before 1.3 has one structure for both: the videos keep it.
+            ? manifest with { Structure = structure, VideoStructure = manifest.VideoStructure ?? manifest.Layout }
+            : manifest with { VideoStructure = structure };
         try
         {
-            (manifest with { Structure = structure }).Write(root);
+            manifest.Write(root);
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -186,56 +220,64 @@ public sealed class LibraryStore
 
     public ProjectInfo? Project(Guid id) => _projects.FirstOrDefault(p => p.Id == id);
 
-    /// <summary>
-    /// The existing project with this name and start day in the folder at <paramref name="root"/>, or a new one there,
-    /// with its videos in <paramref name="videosRoot"/> when that is a separate folder. Null when a folder isn't available.
-    /// </summary>
-    public ProjectInfo? ProjectNamed(string name, ShootDay startDay, string root, string? videosRoot = null)
-    {
-        if (Library(root) is not Guid libraryId) return null;
-        var trimmed = name.Trim();
-        var rootPath = PathUtil.Normalize(root);
-        var existing = _projects.FirstOrDefault(p =>
-            p.LibraryId == libraryId && p.Folder is null && p.StartDay == startDay && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null) return existing with { RootPath = rootPath };
+    /// <summary>Where one kind of a new project's files goes: a projects folder laid out by its structure, or a folder the user chose (the project folder is made inside it).</summary>
+    public sealed record Place(string Root, string? ChosenFolder = null);
 
-        Guid? videoLibraryId = null;
-        var videoRootPath = "";
-        if (videosRoot is not null && !PathUtil.AreSame(videosRoot, rootPath))
+    /// <summary>
+    /// The existing project with this name and start day in these places, or a new one. Photos and videos each follow their
+    /// projects folder's structure, without the Photo / Video level when they go to different folders; a project of a
+    /// multi-day shoot (<paramref name="series"/>) goes in the shoot's folder. Null when a folder isn't available and was
+    /// never seen on this PC.
+    /// </summary>
+    public ProjectInfo? NewProject(string name, ShootDay startDay, string? series, Place photos, Place videos)
+    {
+        var trimmed = name.Trim();
+        var photoStructure = Structure(FolderStructure.Branch.Photo, photos.Root);
+        var videoStructure = Structure(FolderStructure.Branch.Video, videos.Root);
+        if (!PathUtil.AreSame(photos.Root, videos.Root))
         {
-            // A videos folder on a drive that isn't connected is still recorded; its videos wait for it.
-            var path = PathUtil.Normalize(videosRoot);
-            videoLibraryId = Library(path) ?? _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, path))?.LibraryId;
-            if (videoLibraryId is null) return null;
-            videoRootPath = Directory.Exists(path) ? path : "";
+            photoStructure = photoStructure.WithoutMediaType;
+            videoStructure = videoStructure.WithoutMediaType;
         }
-        // A new project follows the folder's current structure, and keeps it from then on.
-        var structure = LibraryManifest.Read(rootPath)?.Structure;
+        if (Resolve(photos, photoStructure.ProjectFolderNameFor(trimmed, startDay)) is not { } photo
+            || Resolve(videos, videoStructure.ProjectFolderNameFor(trimmed, startDay)) is not { } video)
+        {
+            return null;
+        }
+        series = string.IsNullOrWhiteSpace(series) ? null : series.Trim();
+        var existing = _projects.FirstOrDefault(p =>
+            p.LibraryId == photo.Id && (p.Folder ?? []).SequenceEqual(photo.Folder ?? [], PathUtil.Comparer) && p.StartDay == startDay
+            && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(p.Series ?? "", series ?? "", StringComparison.OrdinalIgnoreCase));
+        if (existing is not null) return existing with { RootPath = photo.Path };
         return new ProjectInfo
         {
-            Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = rootPath, Structure = structure,
-            VideoLibraryId = videoLibraryId, VideoRootPath = videoRootPath,
+            Name = trimmed, StartDay = startDay, LibraryId = photo.Id, Structure = photoStructure, Folder = photo.Folder,
+            VideoLibraryId = video.Id, VideoStructure = videoStructure, VideoFolder = video.Folder, Series = series,
+            RootPath = photo.Path, VideoRootPath = video.Path,
         };
     }
 
     /// <summary>
-    /// A project in <paramref name="parent"/>, a folder the user chose: its folder is <c>parent\&lt;date and name&gt;</c>,
-    /// named by <paramref name="structure"/>, and both photos and videos go into it. The project belongs to the nearest
-    /// projects folder at or above <paramref name="parent"/> (so it moves with its year and is found again on the Mac);
-    /// a folder outside every projects folder becomes one. Null when it can't be written.
+    /// The projects folder for a place, and the project folder's path in it for a chosen folder. A chosen folder belongs to
+    /// the nearest projects folder at or above it (so its projects move with their year and are found on the Mac); one
+    /// outside every projects folder becomes one.
     /// </summary>
-    public ProjectInfo? ProjectNamed(string name, ShootDay startDay, string parent, FolderStructure structure)
+    private (Guid Id, string Path, IReadOnlyList<string>? Folder)? Resolve(Place place, string projectFolderName)
     {
-        parent = PathUtil.Normalize(parent);
-        var root = ProjectsFolderContaining(parent) ?? (Library(parent) is null ? null : parent);
-        if (root is null || Library(root) is not Guid libraryId) return null;
-        var trimmed = name.Trim();
-        var relative = Path.GetRelativePath(root, parent);
-        string[] below = relative == "." ? [] : relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-        IReadOnlyList<string> folder = [.. below, structure.ProjectFolderNameFor(trimmed, startDay)];
-        var existing = _projects.FirstOrDefault(p => p.LibraryId == libraryId && p.Folder is { } f && f.SequenceEqual(folder, PathUtil.Comparer));
-        if (existing is not null) return existing with { RootPath = root };
-        return new ProjectInfo { Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = root, Structure = structure, Folder = folder };
+        if (place.ChosenFolder is { } chosenFolder)
+        {
+            var chosen = PathUtil.Normalize(chosenFolder);
+            var root = ProjectsFolderContaining(chosen) ?? (Library(chosen) is null ? null : chosen);
+            if (root is null || Library(root) is not Guid id) return null;
+            var relative = Path.GetRelativePath(root, chosen);
+            string[] below = relative == "." ? [] : relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+            return (id, root, [.. below, projectFolderName]);
+        }
+        var path = PathUtil.Normalize(place.Root);
+        if (Library(path) is Guid libraryId) return (libraryId, path, null);
+        // A folder on a drive that isn't connected is still recorded; its files wait for it.
+        return _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, path)) is { } known ? (known.LibraryId, "", null) : null;
     }
 
     /// <summary>The known project whose folder is <paramref name="folder"/> (its photo or video project folder, or the folder it was created in).</summary>
@@ -413,7 +455,8 @@ public sealed class LibraryStore
     {
         var existing = LibraryManifest.Read(root);
         var updated = LibraryManifest.Create(libraryId,
-            _projects.Where(p => p.LibraryId == libraryId || (p.HasSeparateVideoFolder && p.VideoLibraryId == libraryId)), existing?.Structure);
+            _projects.Where(p => p.LibraryId == libraryId || (p.HasSeparateVideoFolder && p.VideoLibraryId == libraryId)),
+            existing?.Structure, existing?.VideoStructure);
         if (existing is not null && (existing.LibraryId != libraryId || existing.Serialized() == updated.Serialized())) return;
         try { updated.Write(root); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }

@@ -72,7 +72,7 @@ struct MenuContentView: View {
         Button {
             model.revealDestination()
         } label: {
-            TileLabel(symbol: "folder.fill", title: "Projects", subtitle: settings.destinationURL.lastPathComponent)
+            TileLabel(symbol: "folder.fill", title: String(localized: "Projects"), subtitle: settings.destinationURL.lastPathComponent)
         }
         .buttonStyle(ModuleButtonStyle())
         .help("Open \(settings.abbreviatedDestination)")
@@ -82,7 +82,7 @@ struct MenuContentView: View {
         Button {
             model.openSettings()
         } label: {
-            TileLabel(symbol: "gearshape.fill", title: "Settings")
+            TileLabel(symbol: "gearshape.fill", title: String(localized: "Settings"))
         }
         .buttonStyle(ModuleButtonStyle())
         .keyboardShortcut(",")
@@ -93,7 +93,7 @@ struct MenuContentView: View {
     private var cards: some View {
         Module {
             VStack(alignment: .leading, spacing: 8) {
-                ModuleTitle("Cards")
+                ModuleTitle(String(localized: "Cards"))
                 if model.connectedVolumes.isEmpty {
                     HStack(spacing: 8) {
                         CircleIcon(symbol: "sdcard")
@@ -113,7 +113,7 @@ struct MenuContentView: View {
     private var recent: some View {
         Module {
             VStack(alignment: .leading, spacing: 8) {
-                ModuleTitle("Recent")
+                ModuleTitle(String(localized: "Recent"))
                 ForEach(Array(model.history.prefix(3))) { entry in
                     Button {
                         model.reveal(entry)
@@ -165,7 +165,7 @@ private struct ImportDraftView: View {
                     }
                     Spacer(minLength: 4)
                     if queued > 0 {
-                        Text("+\(queued) waiting")
+                        Text(verbatim: Plural.text(queued, "+{0} waiting", "+{0} waiting"))
                             .font(.moduleSubtitle)
                             .foregroundStyle(.secondary)
                     }
@@ -213,7 +213,7 @@ private struct ImportDraftView: View {
             Format.bytes(draft.totalBytes),
         ]
         if draft.analysis.alreadyImported > 0 {
-            parts.append("\(draft.analysis.alreadyImported) imported before")
+            parts.append(Plural.text(draft.analysis.alreadyImported, "{0:N0} imported before", "{0:N0} imported before"))
         }
         return parts.joined(separator: " · ")
     }
@@ -282,16 +282,75 @@ private struct DayRow: View {
 
             Picker("Project for \(summary.day.folderDate)", selection: choice) {
                 ForEach(draft.options(for: summary.day)) { option in
-                    Text(option.title).tag(option.choice)
+                    Text(verbatim: option.title).tag(option.choice)
                 }
             }
             .labelsHidden()
             .pickerStyle(.menu)
 
-            if draft.choice(for: summary.day).isNewProject {
+            switch draft.choice(for: summary.day) {
+            case .newShoot:
+                TextField("Multi-day shoot, e.g. AMD Koledar 2026", text: shootName)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Name of this day’s project, e.g. the model", text: name)
+                    .textFieldStyle(.roundedBorder)
+            case .newInShoot(let id):
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
+                if let shoot = draft.shoot(id) {
+                    let doneTitle = String(localized: "“\(shoot.name)” is finished after this import")
+                    if draft.finishedShoots.contains(id) {
+                        Label(doneTitle, systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HoldToFinishButton(title: String(localized: "Hold to finish “\(shoot.name)”"), doneTitle: doneTitle) {
+                            model.finishShoot(id)
+                            draft.finishedShoots.insert(id)
+                        }
+                        .id(id)
+                    }
+                }
+            case .newProject:
+                TextField("New project name", text: name)
+                    .textFieldStyle(.roundedBorder)
+                if draft.hasPhotos { placeRow(.photo) }
+                if draft.hasVideos { placeRow(.video) }
+            default:
+                EmptyView()
             }
+        }
+    }
+
+    /// "Photos → Projects  [Change…]": where a new project's photos or videos go.
+    private func placeRow(_ branch: FolderStructure.Branch) -> some View {
+        let chosen = draft.folder(for: branch, day: summary.day)
+        let place = chosen?.lastPathComponent ?? model.defaultRoot(branch).lastPathComponent
+        return HStack(spacing: 6) {
+            Image(systemName: branch == .photo ? "photo" : "video")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(branch == .photo ? String(localized: "Photos → \(place)") : String(localized: "Videos → \(place)"))
+                .font(.moduleSubtitle)
+                .foregroundStyle(chosen == nil ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            if chosen != nil {
+                Button {
+                    draft.setFolder(nil, for: branch, day: summary.day)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Back to the default folder"))
+            }
+            Button("Change…") {
+                // After the menu has closed, so the folder panel can take focus.
+                let day = summary.day
+                DispatchQueue.main.async { [model, draft] in model.chooseFolder(for: branch, day: day, in: draft) }
+            }
+            .controlSize(.small)
         }
     }
 
@@ -299,7 +358,7 @@ private struct DayRow: View {
         var parts: [String] = []
         if summary.photos > 0 { parts.append(Format.count(summary.photos, "photo")) }
         if summary.videos > 0 { parts.append(Format.count(summary.videos, "video")) }
-        if summary.audio > 0 { parts.append("\(summary.audio) audio") }
+        if summary.audio > 0 { parts.append(Format.count(summary.audio, "audio", "audio")) }
         parts.append(Format.bytes(summary.bytes))
         return parts.joined(separator: " · ")
     }
@@ -307,15 +366,14 @@ private struct DayRow: View {
     private var choice: Binding<DayChoice> {
         Binding(
             get: { draft.choice(for: summary.day) },
-            set: { newValue in
-                if newValue == .chooseFolder {
-                    // After the menu has closed, so the folder panel can take focus.
-                    let day = summary.day
-                    DispatchQueue.main.async { [model, draft] in model.chooseProjectFolder(for: day, in: draft) }
-                } else {
-                    draft.setChoice(newValue, for: summary.day)
-                }
-            }
+            set: { draft.setChoice($0, for: summary.day) }
+        )
+    }
+
+    private var shootName: Binding<String> {
+        Binding(
+            get: { draft.shootNames[summary.day] ?? "" },
+            set: { draft.shootNames[summary.day] = $0 }
         )
     }
 
@@ -341,9 +399,9 @@ private struct IdleStatusContent: View {
                 size: 30
             )
             VStack(alignment: .leading, spacing: 1) {
-                Text(autoImport ? "Ready" : "Auto Import Is Off")
+                Text(autoImport ? String(localized: "Ready") : String(localized: "Auto Import Is Off"))
                     .font(.moduleTitle)
-                Text(autoImport ? "Insert an SD card to import it into a project." : "Click Import on a card below to import it.")
+                Text(autoImport ? String(localized: "Insert an SD card to import it into a project.") : String(localized: "Click Import on a card below to import it."))
                     .font(.moduleSubtitle)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -360,7 +418,7 @@ private struct ReadingCardContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            StatusHeader(title: "Reading Card", subtitle: volume.name) { model.cancelAnalysis() }
+            StatusHeader(title: String(localized: "Reading Card"), subtitle: volume.name) { model.cancelAnalysis() }
             CapsuleProgress(fraction: fraction, symbol: "sdcard.fill")
             Text(caption)
                 .font(.moduleSubtitle)
@@ -375,8 +433,9 @@ private struct ReadingCardContent: View {
     }
 
     private var caption: String {
-        guard let progress, progress.total > 0 else { return "Looking for photos and videos…" }
-        return "Finding shoot dates and cameras · \(progress.done.formatted()) of \(Format.count(progress.total, "file"))"
+        guard let progress, progress.total > 0 else { return String(localized: "Looking for photos and videos…") }
+        return String(localized: "Finding shoot dates and cameras") + " · "
+            + Plural.text(progress.total, "{1:N0} of {0:N0} file", "{1:N0} of {0:N0} files", progress.done.formatted())
     }
 }
 
@@ -389,22 +448,22 @@ private struct ActiveImportContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            StatusHeader(title: "Importing", subtitle: "\(backup.volume.name) → \(backup.title)") { model.cancelImport() }
+            StatusHeader(title: String(localized: "Importing"), subtitle: "\(backup.volume.name) → \(backup.title)") { model.cancelImport() }
 
             CapsuleProgress(fraction: isCopying ? progress.fractionCompleted : nil, symbol: "sdcard.fill")
 
             if !isCopying {
-                caption("Checking the project folders…")
+                caption(String(localized: "Checking the project folders…"))
             } else if progress.filesToCopy == 0 {
-                caption("Everything is already in the project.")
+                caption(String(localized: "Everything is already in the project."))
             } else {
                 HStack {
-                    caption("\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))")
+                    caption(String(localized: "\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))"))
                     Spacer()
-                    caption(backup.estimatedSecondsRemaining.map { "\(Format.duration($0)) left" } ?? "")
+                    caption(backup.estimatedSecondsRemaining.map { String(localized: "\(Format.duration($0)) left") } ?? "")
                 }
                 HStack {
-                    caption("\(progress.filesProcessed.formatted()) of \(Format.count(progress.filesToCopy, "file"))")
+                    caption(Plural.text(progress.filesToCopy, "{1:N0} of {0:N0} file", "{1:N0} of {0:N0} files", progress.filesProcessed.formatted()))
                     Spacer()
                     caption("\(Int((progress.fractionCompleted * 100).rounded()))%")
                 }
@@ -418,7 +477,7 @@ private struct ActiveImportContent: View {
             }
 
             if !model.importQueue.isEmpty {
-                caption("Up next: " + model.importQueue.map(\.title).joined(separator: ", "))
+                caption(String(localized: "Up next: \(model.importQueue.map(\.title).joined(separator: ", "))"))
                     .lineLimit(1)
             }
         }
@@ -440,20 +499,20 @@ private struct MovingYearContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            StatusHeader(title: "Moving \(migration.yearText)", subtitle: "To “\(migration.driveName)”") { model.cancelMigration() }
+            StatusHeader(title: String(localized: "Moving \(migration.yearText)"), subtitle: String(localized: "To “\(migration.driveName)”")) { model.cancelMigration() }
             CapsuleProgress(
                 fraction: progress.phase == .copying ? progress.fractionCompleted : nil,
                 symbol: "externaldrive.fill"
             )
             if progress.phase == .scanning {
-                caption("Checking what’s already on the drive…")
+                caption(String(localized: "Checking what’s already on the drive…"))
             } else {
                 HStack {
-                    caption("\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))")
+                    caption(String(localized: "\(Format.bytes(progress.bytesProcessed)) of \(Format.bytes(progress.bytesToCopy))"))
                     Spacer()
-                    caption(migration.estimatedSecondsRemaining.map { "\(Format.duration($0)) left" } ?? "")
+                    caption(migration.estimatedSecondsRemaining.map { String(localized: "\(Format.duration($0)) left") } ?? "")
                 }
-                caption("Each file is deleted from this Mac once its copy is verified.")
+                caption(String(localized: "Each file is deleted from this Mac once its copy is verified."))
             }
         }
     }
@@ -519,13 +578,13 @@ private struct CardRow: View {
                 Button("Import") { model.prepareImport(volume) }
                     .buttonStyle(PillButtonStyle())
             case .reading:
-                statusText("Reading…")
+                statusText(String(localized: "Reading…"))
             case .needsProject:
-                statusText("Choose project")
+                statusText(String(localized: "Choose project"))
             case .queued:
-                statusText("Queued")
+                statusText(String(localized: "Queued"))
             case .importing:
-                statusText("Importing")
+                statusText(String(localized: "Importing"))
             }
             Button {
                 model.eject(volume)
@@ -548,10 +607,10 @@ private struct CardRow: View {
 
     private var detail: String {
         if let last = model.lastImport(of: volume) {
-            return "Imported \(last.date.formatted(.relative(presentation: .named)))"
+            return String(localized: "Imported \(last.date.formatted(.relative(presentation: .named)))")
         }
         let capacity = volume.capacity.map { Format.bytes($0) + " · " } ?? ""
-        return capacity + "Not imported yet"
+        return capacity + String(localized: "Not imported yet")
     }
 }
 

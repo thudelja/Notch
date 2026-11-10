@@ -2,6 +2,8 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 
+using SDBackup.Core;
+
 namespace SDBackup.Windows;
 
 /// <summary>
@@ -23,10 +25,10 @@ public sealed class TrayIcon : IDisposable
         _normal = normal;
         _attention = attention;
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open Notch", null, (_, _) => Clicked?.Invoke());
-        menu.Items.Add("Settings…", null, (_, _) => SettingsRequested?.Invoke());
+        menu.Items.Add(Loc.T("Open Notch"), null, (_, _) => Clicked?.Invoke());
+        menu.Items.Add(Loc.T("Settings…"), null, (_, _) => SettingsRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Quit Notch", null, (_, _) => QuitRequested?.Invoke());
+        menu.Items.Add(Loc.T("Quit Notch"), null, (_, _) => QuitRequested?.Invoke());
 
         _icon = new NotifyIcon
         {
@@ -49,8 +51,7 @@ public sealed class TrayIcon : IDisposable
         _icon.Text = count switch
         {
             0 => "Notch",
-            1 => "Notch – 1 card waiting for a project",
-            _ => $"Notch – {count} cards waiting for a project",
+            _ => Loc.Plural(count, "Notch – {0} card waiting for a project", "Notch – {0} cards waiting for a project"),
         };
     }
 
