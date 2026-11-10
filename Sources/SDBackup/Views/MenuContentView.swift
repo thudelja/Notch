@@ -298,11 +298,17 @@ private struct DayRow: View {
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
                 if let shoot = draft.shoot(id) {
-                    HoldToFinishButton(
-                        title: String(localized: "Hold to finish “\(shoot.name)”"),
-                        doneTitle: String(localized: "“\(shoot.name)” is finished after this import")
-                    ) {
-                        model.finishShoot(id)
+                    let doneTitle = String(localized: "“\(shoot.name)” is finished after this import")
+                    if draft.finishedShoots.contains(id) {
+                        Label(doneTitle, systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HoldToFinishButton(title: String(localized: "Hold to finish “\(shoot.name)”"), doneTitle: doneTitle) {
+                            model.finishShoot(id)
+                            draft.finishedShoots.insert(id)
+                        }
+                        .id(id)
                     }
                 }
             case .newProject:

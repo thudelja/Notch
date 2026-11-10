@@ -57,6 +57,8 @@ final class ImportDraft: ObservableObject, Identifiable {
     /// Folders chosen for a new project's photos or videos (the project folder is made inside).
     @Published private(set) var photoFolders: [ShootDay: URL] = [:]
     @Published private(set) var videoFolders: [ShootDay: URL] = [:]
+    /// Shoots finished in this panel. They still take this import; every day in them shows them as finished.
+    @Published var finishedShoots: Set<UUID> = []
     @Published var cameraNames: [String: String]
 
     init(volume: VolumeInfo, analysis: CardAnalysis, recentProjects: [ProjectInfo], openShoots: [MultiDayShoot], cameraNames: [String: String]) {

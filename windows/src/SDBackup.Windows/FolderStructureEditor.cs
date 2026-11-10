@@ -13,32 +13,125 @@ namespace SDBackup.Windows;
 public sealed record EnumChoice<T>(T Value, string Title);
 
 /// <summary>
-/// Settings › Folder structure…: edits how new projects in the projects folder are laid out below the year folder
-/// (PORTING.md §2.1). The window binds to this; <see cref="Structure"/> is the result.
+/// Settings › Folder structure…: the photos' and videos' structures for new projects, each in its own tab (PORTING.md
+/// §2.1). The window binds to this.
 /// </summary>
+public sealed class FolderStructuresEditor : ObservableObject
+{
+    private readonly Func<FolderStructure, FolderStructure, bool> _save;
+    private bool _showVideos;
+
+    /// <param name="photo">The photos' structure to start from.</param>
+    /// <param name="video">The videos' structure to start from.</param>
+    /// <param name="separateFolders">Photos and videos go to different folders: the Photo / Video level is left out.</param>
+    /// <param name="save">Saves both structures; false keeps the window open (a projects folder couldn't be written).</param>
+    public FolderStructuresEditor(FolderStructure photo, FolderStructure video, bool separateFolders, Func<FolderStructure, FolderStructure, bool> save)
+    {
+        _save = save;
+        Photos = new FolderStructureEditor(photo, FolderStructure.Branch.Photo, separateFolders, Changed);
+        Videos = new FolderStructureEditor(video, FolderStructure.Branch.Video, separateFolders, Changed);
+        SeparateFolders = separateFolders;
+        SaveCommand = new RelayCommand(Save, () => CanSave);
+    }
+
+    public FolderStructureEditor Photos { get; }
+    public FolderStructureEditor Videos { get; }
+    public bool SeparateFolders { get; }
+
+    /// <summary>The Videos tab is shown (else the Photos tab).</summary>
+    public bool ShowVideos
+    {
+        get => _showVideos;
+        set
+        {
+            if (!SetProperty(ref _showVideos, value)) return;
+            OnPropertyChanged(nameof(ShowPhotos));
+            OnPropertyChanged(nameof(Current));
+        }
+    }
+
+    public bool ShowPhotos
+    {
+        get => !ShowVideos;
+        set => ShowVideos = !value;
+    }
+
+    public FolderStructureEditor Current => ShowVideos ? Videos : Photos;
+
+    /// <summary>In one folder, photos and videos need different Photo / Video folder names.</summary>
+    public string? Clash
+    {
+        get
+        {
+            if (SeparateFolders) return null;
+            var photo = Photos.Structure.Levels.FirstOrDefault(l => l.Kind == FolderLevel.LevelKind.MediaType)?.Photo;
+            var video = Videos.Structure.Levels.FirstOrDefault(l => l.Kind == FolderLevel.LevelKind.MediaType)?.Video;
+            return photo is not null && video is not null && string.Equals(photo.Trim(), video.Trim(), StringComparison.OrdinalIgnoreCase)
+                ? "Photos and videos go to the same folder, so their Photo and Video folders need different names."
+                : null;
+        }
+    }
+
+    public bool CanSave =>
+        Photos.Problems.Count == 0 && Videos.Problems.Count == 0 && Clash is null && (Photos.IsChanged || Videos.IsChanged);
+
+    public RelayCommand SaveCommand { get; }
+
+    /// <summary>Raised after a successful save, so the window closes.</summary>
+    public event Action? Saved;
+
+    private void Changed()
+    {
+        OnPropertyChanged(nameof(Clash));
+        OnPropertyChanged(nameof(CanSave));
+        SaveCommand.RaiseCanExecuteChanged();
+    }
+
+    private void Save()
+    {
+        if (CanSave && _save(Photos.Structure, Videos.Structure)) Saved?.Invoke();
+    }
+}
+
+/// <summary>One structure in the editor: the photos' or the videos'.</summary>
 public sealed class FolderStructureEditor : ObservableObject
 {
     private readonly FolderStructure _original;
-    private readonly Func<FolderStructure, bool> _save;
+    private readonly Action? _changed;
     private bool _cameraFolders;
     private MediaChoice? _selectedMedia;
     private bool _loading;
 
     /// <param name="structure">The structure to start from.</param>
-    /// <param name="save">Saves the structure; false keeps the window open (the projects folder couldn't be written).</param>
-    public FolderStructureEditor(FolderStructure structure, Func<FolderStructure, bool> save)
+    /// <param name="branch">Photos or videos.</param>
+    /// <param name="separateFolders">Photos and videos go to different folders: the Photo / Video level is left out.</param>
+    /// <param name="changed">Called after every change.</param>
+    public FolderStructureEditor(FolderStructure structure, FolderStructure.Branch branch, bool separateFolders, Action? changed = null)
     {
         _original = structure;
-        _save = save;
+        _changed = changed;
+        Branch = branch;
+        SeparateFolders = separateFolders;
         AddMediaTypeCommand = new RelayCommand(() => Add(FolderLevel.MediaTypeLevel()), () => !Has(FolderLevel.LevelKind.MediaType));
         AddMonthCommand = new RelayCommand(() => Add(FolderLevel.MonthLevel()), () => !Has(FolderLevel.LevelKind.Month));
         AddFolderCommand = new RelayCommand(() => Add(FolderLevel.TextLevel("Folder")));
         AddSplitCommand = new RelayCommand(() => Add(FolderLevel.SplitLevel()), () => !Has(FolderLevel.LevelKind.Split));
         AddVideoFolderCommand = new RelayCommand(() => AddVideoFolder(""));
-        ResetCommand = new RelayCommand(() => Load(FolderStructure.Standard), () => !Structure.IsStandard);
-        SaveCommand = new RelayCommand(Save, () => CanSave);
+        ResetCommand = new RelayCommand(() => Load(StandardStructure), () => !Structure.Equals(StandardStructure));
         Load(structure);
     }
+
+    public FolderStructure.Branch Branch { get; }
+    public bool IsPhotos => Branch == FolderStructure.Branch.Photo;
+    public bool IsVideos => Branch == FolderStructure.Branch.Video;
+    public bool SeparateFolders { get; }
+    public string AddMediaTypeLabel => IsPhotos ? "+ Photo folder" : "+ Video folder";
+    public string ResetLabel => IsPhotos ? "Reset photos to standard" : "Reset videos to standard";
+    public string FooterText => IsPhotos
+        ? "New projects’ photos get this structure. Existing projects keep their folders."
+        : "New projects’ videos get this structure. Existing projects keep their folders.";
+
+    private FolderStructure StandardStructure => SeparateFolders ? FolderStructure.Standard.WithoutMediaType : FolderStructure.Standard;
 
     public ObservableCollection<FolderLevelViewModel> Levels { get; } = [];
     public ObservableCollection<VideoFolderViewModel> VideoFolders { get; } = [];
@@ -75,10 +168,25 @@ public sealed class FolderStructureEditor : ObservableObject
         MediaFolder = SelectedMedia?.Folder?.Name ?? "",
     };
 
-    public IReadOnlyList<FolderExample> Examples => Structure.Examples("\\");
-    public IReadOnlyList<string> Problems => Structure.Problems;
+    /// <summary>The structure as new projects get it: without the Photo / Video level when photos and videos go to different folders.</summary>
+    private FolderStructure Shown => SeparateFolders ? Structure.WithoutMediaType : Structure;
+
+    /// <summary>Where a sample file goes, its Exported folder, and the same in a multi-day shoot.</summary>
+    public IReadOnlyList<FolderExample> Examples
+    {
+        get
+        {
+            var shown = Shown;
+            var examples = new List<FolderExample> { new(IsPhotos ? "A photo" : "A video", string.Join("\\", shown.ExamplePath(Branch))) };
+            if (shown.ExampleExports(Branch) is { } exports) examples.Add(new("Exports", string.Join("\\", exports) + "\\"));
+            examples.Add(new("In a multi-day shoot", string.Join("\\", shown.ExamplePath(Branch, "AMD Koledar 2026"))));
+            return examples;
+        }
+    }
+
+    public IReadOnlyList<string> Problems => Structure.ProblemsFor(Branch);
     public bool HasProblems => Problems.Count > 0;
-    public bool CanSave => Structure is { IsValid: true } structure && !structure.Equals(_original);
+    public bool IsChanged => !Structure.Equals(_original);
 
     public ICommand AddMediaTypeCommand { get; }
     public ICommand AddMonthCommand { get; }
@@ -86,10 +194,6 @@ public sealed class FolderStructureEditor : ObservableObject
     public ICommand AddSplitCommand { get; }
     public ICommand AddVideoFolderCommand { get; }
     public ICommand ResetCommand { get; }
-    public ICommand SaveCommand { get; }
-
-    /// <summary>Raised after a successful save, so the window closes.</summary>
-    public event Action? Saved;
 
     // ------------------------------------------------------------------ Editing
 
@@ -99,12 +203,13 @@ public sealed class FolderStructureEditor : ObservableObject
         OnPropertyChanged(nameof(Examples));
         OnPropertyChanged(nameof(Problems));
         OnPropertyChanged(nameof(HasProblems));
-        OnPropertyChanged(nameof(CanSave));
-        foreach (var command in new[] { AddMediaTypeCommand, AddMonthCommand, AddSplitCommand, ResetCommand, SaveCommand })
+        OnPropertyChanged(nameof(IsChanged));
+        foreach (var command in new[] { AddMediaTypeCommand, AddMonthCommand, AddSplitCommand, ResetCommand })
         {
             ((RelayCommand)command).RaiseCanExecuteChanged();
         }
         foreach (var level in Levels) level.RefreshCommands();
+        _changed?.Invoke();
     }
 
     internal bool CanMove(FolderLevelViewModel level, int offset)
@@ -174,11 +279,6 @@ public sealed class FolderStructureEditor : ObservableObject
         OnPropertyChanged(nameof(SelectedMedia));
         Changed();
     }
-
-    private void Save()
-    {
-        if (CanSave && _save(Structure)) Saved?.Invoke();
-    }
 }
 
 /// <summary>One level of the structure in the editor.</summary>
@@ -227,7 +327,7 @@ public sealed class FolderLevelViewModel : ObservableObject
 
     public string Title => Kind switch
     {
-        FolderLevel.LevelKind.MediaType => "Photo / Video",
+        FolderLevel.LevelKind.MediaType => _editor.IsPhotos ? "Photo folder" : "Video folder",
         FolderLevel.LevelKind.Month => "Month",
         FolderLevel.LevelKind.Text => "Folder",
         FolderLevel.LevelKind.Split => "Unedited / Exported",
@@ -235,6 +335,14 @@ public sealed class FolderLevelViewModel : ObservableObject
     };
 
     public bool IsMediaType => Kind == FolderLevel.LevelKind.MediaType;
+
+    /// <summary>The Photo / Video level shows only this tab's name.</summary>
+    public bool ShowsPhotoName => IsMediaType && _editor.IsPhotos;
+    public bool ShowsVideoName => IsMediaType && _editor.IsVideos;
+
+    public string MediaTypeNote => _editor.SeparateFolders
+        ? "Left out: photos and videos go to different folders."
+        : "Keeps photos and videos apart in the same folder.";
     public bool IsMonth => Kind == FolderLevel.LevelKind.Month;
     public bool IsText => Kind == FolderLevel.LevelKind.Text;
     public bool IsSplit => Kind == FolderLevel.LevelKind.Split;

@@ -1,6 +1,7 @@
 <Window x:Class="SDBackup.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SDBackup.App"
         Title="Notch Settings"
         Width="580"
         Height="760"
@@ -51,6 +52,39 @@
                                 VerticalAlignment="Top" Click="EditFolderStructure_Click" />
                         <TextBlock Style="{StaticResource WrappedCaptionText}" Text="{Binding FolderStructureSummary, Mode=OneWay}" />
                     </DockPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ============================================================ Multi-day shoots -->
+            <TextBlock Style="{StaticResource SectionTitle}" Text="Multi-day shoots" />
+            <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource WrappedCaptionText}"
+                               Visibility="{Binding HasShoots, Converter={StaticResource BoolToCollapsed}}"
+                               Text="A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”." />
+                    <ItemsControl ItemsSource="{Binding Shoots}" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <DockPanel Margin="0,0,0,10">
+                                    <Grid DockPanel.Dock="Right" Margin="12,0,0,0" VerticalAlignment="Center">
+                                        <local:HoldButton Padding="10,4" FontSize="12" Text="{Binding FinishTitle}"
+                                                          AutomationProperties.Name="{Binding FinishAccessibleName}" Command="{Binding FinishCommand}"
+                                                          Visibility="{Binding IsOpen, Converter={StaticResource BoolToVisible}}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="Reopen"
+                                                AutomationProperties.Name="{Binding ReopenAccessibleName}" Command="{Binding ReopenCommand}"
+                                                Visibility="{Binding IsClosed, Converter={StaticResource BoolToVisible}}" />
+                                    </Grid>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource BodyText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                                        <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Status}" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Style="{StaticResource WrappedCaptionText}"
+                               Visibility="{Binding HasShoots, Converter={StaticResource BoolToVisible}}"
+                               Text="Open shoots appear in the import panel as “New in …”. A shoot not used for 100 days leaves the panel; reopen it here." />
                 </StackPanel>
             </Border>
 

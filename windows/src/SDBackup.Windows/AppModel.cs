@@ -100,6 +100,8 @@ public sealed class AppModel : ObservableObject, IDisposable
             }
         };
         RefreshRecent();
+        Library.Shoots.Changed += () => _dispatcher.Invoke(RefreshShoots);
+        RefreshShoots();
     }
 
     // ------------------------------------------------------------------ Bindable state
@@ -152,16 +154,39 @@ public sealed class AppModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where new projects go (Settings › Projects folder).</summary>
+    /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where a new project's photo and video go (Settings › Projects folder).</summary>
     public string FolderStructureSummary
     {
         get
         {
-            var lines = Library.Structure(Settings.ProjectsFolder).Summary.ToList();
-            if (Settings.SeparateVideosFolder is { } videos) lines.Add($"Videos are saved in {videos}, in the same structure.");
+            var photo = FolderStructureFor(FolderStructure.Branch.Photo);
+            var video = FolderStructureFor(FolderStructure.Branch.Video);
+            if (HasSeparateFolders)
+            {
+                photo = photo.WithoutMediaType;
+                video = video.WithoutMediaType;
+            }
+            var lines = new List<string>
+            {
+                "Photos: " + string.Join(" › ", photo.ExamplePath(FolderStructure.Branch.Photo)),
+                "Videos: " + string.Join(" › ", video.ExamplePath(FolderStructure.Branch.Video)),
+            };
+            if (Settings.SeparateVideosFolder is { } videos)
+            {
+                lines.Add($"Videos are saved in {videos}. Photo and Video folders are left out because photos and videos go to different folders.");
+            }
             return string.Join(Environment.NewLine, lines);
         }
     }
+
+    /// <summary>The folder holding new projects' photos or videos by default.</summary>
+    public string DefaultRoot(FolderStructure.Branch branch) =>
+        branch == FolderStructure.Branch.Photo ? Settings.ProjectsFolder : Settings.SeparateVideosFolder ?? Settings.ProjectsFolder;
+
+    /// <summary>Photos and videos go to different folders, so the Photo / Video level is left out.</summary>
+    public bool HasSeparateFolders => Settings.HasSeparateVideosFolder;
+
+    private FolderStructure FolderStructureFor(FolderStructure.Branch branch) => Library.Structure(branch, DefaultRoot(branch));
 
     public bool CanMoveYear => !IsMigrating && _activeJob is null && Years.Contains(SelectedYear);
     public bool HasYears => Years.Count > 0;
@@ -400,7 +425,7 @@ public sealed class AppModel : ObservableObject, IDisposable
                 ?? (analysis.CameraModels.Count == 1 ? names[analysis.CameraModels[0]] : null)
                 ?? "Camera";
         }
-        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), names, StartImport, Dismiss, ChooseProjectFolder);
+        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), Library.Shoots.Open, names, StartImport, Dismiss, DraftServices);
         _drafts.Add(draft);
         DraftsChanged();
         Log.Write($"Read “{volume.DisplayName}”: {analysis.Items.Count} new files on {draft.Days.Count} shoot day(s), {analysis.AlreadyImported} imported before");
@@ -420,7 +445,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     {
         if (!draft.IsReady) return;
         Library.RefreshLocations();
-        var projects = draft.ResolveProjects(Library, Settings.ProjectsFolder, Settings.SeparateVideosFolder);
+        var projects = draft.ResolveProjects(Library, DefaultRoot(FolderStructure.Branch.Photo), DefaultRoot(FolderStructure.Branch.Video));
         if (projects is null)
         {
             var folders = Settings.SeparateVideosFolder is { } videos ? $"{Settings.ProjectsFolder} or {videos}" : Settings.ProjectsFolder;
@@ -441,6 +466,9 @@ public sealed class AppModel : ObservableObject, IDisposable
 
         var plan = ProjectLayout.Plan(draft.Analysis.Items, projects, draft.CameraNameFor);
         Library.RememberCameraNames(draft.CameraNames, draft.Volume.CardId);
+        var (started, continued) = draft.ShootsUsed;
+        foreach (var name in started) Library.Shoots.Start(name);
+        foreach (var name in continued) Library.Shoots.MarkUsed(name);
         _drafts.Remove(draft);
         DraftsChanged();
         if (plan.Items.Count == 0) return;
@@ -892,20 +920,26 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     // ------------------------------------------------------------------ Folder structure
 
-    /// <summary>An editor for the folder structure new projects get in the projects folder (Settings › Folder structure…).</summary>
-    public FolderStructureEditor CreateFolderStructureEditor() =>
-        new(Library.Structure(Settings.ProjectsFolder), SaveFolderStructure);
+    /// <summary>An editor for the structures new projects' photos and videos get (Settings › Folder structure…).</summary>
+    public FolderStructuresEditor CreateFolderStructureEditor() =>
+        new(FolderStructureFor(FolderStructure.Branch.Photo), FolderStructureFor(FolderStructure.Branch.Video), HasSeparateFolders, SaveFolderStructures);
 
-    /// <summary>Saves the structure for new projects; alerts and returns false when the projects folder can't be written.</summary>
-    private bool SaveFolderStructure(FolderStructure structure)
+    /// <summary>Saves the structures for new projects; alerts and returns false when a projects folder can't be written.</summary>
+    private bool SaveFolderStructures(FolderStructure photo, FolderStructure video)
     {
-        if (!Library.SetStructure(structure, Settings.ProjectsFolder))
+        var photoRoot = DefaultRoot(FolderStructure.Branch.Photo);
+        var videoRoot = DefaultRoot(FolderStructure.Branch.Video);
+        if (!Library.SetStructure(photo, FolderStructure.Branch.Photo, photoRoot) || !Library.SetStructure(video, FolderStructure.Branch.Video, videoRoot))
         {
+            var folders = HasSeparateFolders ? $"{photoRoot} / {videoRoot}" : photoRoot;
             _dialogs.Alert("The folder structure wasn’t saved",
-                $"{Settings.ProjectsFolder} can’t be written. If it’s on an external drive, connect it and try again.");
+                $"{folders} can’t be written. If it’s on an external drive, connect it and try again.");
             return false;
         }
-        Log.Write(structure.Summary.Select(line => "    " + line).Prepend($"Folder structure for new projects in {Settings.ProjectsFolder}:"));
+        Log.Write(
+            "Folder structure for new projects:",
+            $"    Photos ({photoRoot}): {string.Join("\\", photo.ExamplePath(FolderStructure.Branch.Photo))}",
+            $"    Videos ({videoRoot}): {string.Join("\\", video.ExamplePath(FolderStructure.Branch.Video))}");
         OnPropertyChanged(nameof(FolderStructureSummary));
         return true;
     }
@@ -920,17 +954,23 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (Settings.SeparateVideosFolder is { } videos) Library.Library(videos);
     }
 
+    /// <summary>What import drafts ask this model for.</summary>
+    private ImportDraftServices DraftServices => new(ChooseFolder, branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot);
+
     /// <summary>
-    /// Import panel › "New project in a folder…": asks for a folder. The folder of a project Notch knows adds the day to
-    /// that project; any other folder gets the new project's folder inside it.
+    /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in. The folder of a project
+    /// Notch knows adds the day to that project instead.
     /// </summary>
-    private void ChooseProjectFolder(ImportDraftViewModel draft, ShootDay day)
+    private void ChooseFolder(ImportDraftViewModel draft, ShootDay day, FolderStructure.Branch branch)
     {
         string? folder;
         PanelDialogOpen?.Invoke(true);
         try
         {
-            folder = _dialogs.PickFolder("New project in a folder (or choose a project's own folder to add to it)", Settings.ProjectsFolder);
+            var title = branch == FolderStructure.Branch.Photo
+                ? "Where should the photos go? Notch makes the project's folder (date and name) inside the folder you choose."
+                : "Where should the videos go? Notch makes the project's folder (date and name) inside the folder you choose.";
+            folder = _dialogs.PickFolder(title, draft.FolderFor(day, branch) ?? DefaultRoot(branch));
         }
         finally
         {
@@ -939,7 +979,34 @@ public sealed class AppModel : ObservableObject, IDisposable
         if (folder is null) return;
         Library.RefreshLocations();
         if (Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
-        else draft.SetChoice(day, DayChoice.NewProjectIn(PathUtil.Normalize(folder)));
+        else draft.SetFolder(day, branch, PathUtil.Normalize(folder));
+    }
+
+    // ------------------------------------------------------------------ Multi-day shoots
+
+    /// <summary>Settings › Multi-day shoots.</summary>
+    public ObservableCollection<ShootViewModel> Shoots { get; } = [];
+
+    public bool HasShoots => Shoots.Count > 0;
+
+    /// <summary>The import panel's or Settings' "hold to finish": the shoot leaves the import panel.</summary>
+    public void FinishShoot(Guid id)
+    {
+        if (Library.Shoots.Shoot(id) is not { } shoot) return;
+        Library.Shoots.Finish(id);
+        Log.Write($"Finished the multi-day shoot “{shoot.Name}”");
+    }
+
+    public void ReopenShoot(Guid id) => Library.Shoots.Reopen(id);
+
+    public void RefreshShoots()
+    {
+        Shoots.Clear();
+        foreach (var shoot in Library.Shoots.All.OrderByDescending(s => s.LastUsed))
+        {
+            Shoots.Add(new ShootViewModel(shoot, new RelayCommand(() => FinishShoot(shoot.Id)), new RelayCommand(() => ReopenShoot(shoot.Id))));
+        }
+        OnPropertyChanged(nameof(HasShoots));
     }
 
     private void ChangeProjectsFolder()
@@ -1048,7 +1115,9 @@ public sealed class AppModel : ObservableObject, IDisposable
             new() { Name = "Product Shoot", StartDay = new ShootDay(2026, 10, 14), RootPath = Settings.ProjectsFolder },
             new() { Name = "Portraits Maja", StartDay = new ShootDay(2026, 10, 9), RootPath = "" },
         };
-        var draft = new ImportDraftViewModel(volume, analysis, recent, names, _ => { }, _ => { }, (_, _) => { });
+        Library.Shoots.Finish(Library.Shoots.Start("Poroka Novak 2025").Id);
+        var shoot = Library.Shoots.Start("AMD Koledar 2026");
+        var draft = new ImportDraftViewModel(volume, analysis, recent, [shoot], names, _ => { }, _ => { }, ImportDraftServices.None);
         draft.Days[0].ProjectName = "Ana Wedding";
         _drafts.Add(draft);
         _drafts.Add(draft);

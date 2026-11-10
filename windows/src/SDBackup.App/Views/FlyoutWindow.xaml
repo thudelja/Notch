@@ -1,6 +1,7 @@
 <Window x:Class="SDBackup.App.FlyoutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SDBackup.App"
         Title="Notch"
         Width="404"
         SizeToContent="Height"
@@ -117,10 +118,65 @@
                                                     </DataTemplate>
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
-                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsNewProject, Converter={StaticResource BoolToVisible}}">
-                                                <TextBlock Style="{StaticResource SmallText}" Text="Name of the new project" Margin="0,0,0,4" />
-                                                <TextBox Style="{StaticResource FieldBox}"
+                                            <!-- A new multi-day shoot: its name, and this day's project in it -->
+                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsNewShoot, Converter={StaticResource BoolToVisible}}">
+                                                <TextBlock Style="{StaticResource SmallText}" Text="Multi-day shoot, e.g. AMD Koledar 2026" Margin="0,0,0,4" />
+                                                <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="Multi-day shoot"
+                                                         Text="{Binding ShootName, UpdateSourceTrigger=PropertyChanged}" />
+                                                <TextBlock Style="{StaticResource SmallText}" Text="Name of this day’s project, e.g. the model" Margin="0,8,0,4" />
+                                                <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="Name of this day’s project"
                                                          Text="{Binding ProjectName, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+
+                                            <!-- A new project, on its own or in a multi-day shoot -->
+                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding AsksForName, Converter={StaticResource BoolToVisible}}">
+                                                <TextBlock Style="{StaticResource SmallText}" Text="Name of the new project" Margin="0,0,0,4" />
+                                                <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="Name of the new project"
+                                                         Text="{Binding ProjectName, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+
+                                            <!-- Where a new project's photos and videos go: "Photos → Projects  [Change…]" -->
+                                            <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsPhotoPlace, Converter={StaticResource BoolToVisible}}">
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="Change…"
+                                                        ToolTip="Choose the folder this project’s photos go in"
+                                                        AutomationProperties.Name="Change where the photos go" Command="{Binding ChangePhotosCommand}" />
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
+                                                        ToolTip="Back to the default folder" AutomationProperties.Name="Photos back to the default folder"
+                                                        Visibility="{Binding HasChosenPhotoFolder, Converter={StaticResource BoolToVisible}}"
+                                                        Command="{Binding ResetPhotosCommand}">
+                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
+                                                </Button>
+                                                <TextBlock DockPanel.Dock="Left" Style="{StaticResource IconText}" FontSize="12" Width="18" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" Text="&#xE91B;" />
+                                                <TextBlock Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,6,0" Text="{Binding PhotoPlaceText}" />
+                                            </DockPanel>
+                                            <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsVideoPlace, Converter={StaticResource BoolToVisible}}">
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="Change…"
+                                                        ToolTip="Choose the folder this project’s videos go in"
+                                                        AutomationProperties.Name="Change where the videos go" Command="{Binding ChangeVideosCommand}" />
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
+                                                        ToolTip="Back to the default folder" AutomationProperties.Name="Videos back to the default folder"
+                                                        Visibility="{Binding HasChosenVideoFolder, Converter={StaticResource BoolToVisible}}"
+                                                        Command="{Binding ResetVideosCommand}">
+                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
+                                                </Button>
+                                                <TextBlock DockPanel.Dock="Left" Style="{StaticResource IconText}" FontSize="12" Width="18" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" Text="&#xE714;" />
+                                                <TextBlock Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,6,0" Text="{Binding VideoPlaceText}" />
+                                            </DockPanel>
+
+                                            <!-- A day in an open multi-day shoot: hold to finish the shoot -->
+                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsInShoot, Converter={StaticResource BoolToVisible}}">
+                                                <local:HoldButton HorizontalAlignment="Left" Padding="10,4" FontSize="12"
+                                                                  Text="{Binding FinishShootTitle}" AutomationProperties.Name="{Binding FinishShootTitle}"
+                                                                  Command="{Binding FinishShootCommand}"
+                                                                  Visibility="{Binding CanFinishShoot, Converter={StaticResource BoolToVisible}}" />
+                                                <StackPanel Orientation="Horizontal" Visibility="{Binding ShootFinished, Converter={StaticResource BoolToVisible}}">
+                                                    <TextBlock Style="{StaticResource IconText}" FontSize="12" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource SuccessBrush}" Text="&#xE73E;" />
+                                                    <TextBlock Style="{StaticResource CaptionText}" Margin="6,0,0,0" VerticalAlignment="Center"
+                                                               Text="{Binding ShootFinishedText}" />
+                                                </StackPanel>
                                             </StackPanel>
                                         </StackPanel>
                                     </DataTemplate>

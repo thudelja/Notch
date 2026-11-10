@@ -142,6 +142,13 @@ public static class Format
         return $"{text} {Units[unit]}";
     }
 
+    /// <summary>A folder's own name, for display ("Projects"); a drive's root keeps its whole path ("D:\").</summary>
+    public static string FolderName(string path)
+    {
+        var name = System.IO.Path.GetFileName(path.TrimEnd('\\', '/'));
+        return name.Length > 0 ? name : path;
+    }
+
     public static string Count(int number, string singular, string? plural = null) =>
         $"{number:N0} {(number == 1 ? singular : plural ?? singular + "s")}";
 
