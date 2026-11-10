@@ -19,6 +19,7 @@ public sealed record EnumChoice<T>(T Value, string Title);
 public sealed class FolderStructuresEditor : ObservableObject
 {
     private readonly Func<FolderStructure, FolderStructure, bool> _save;
+    private readonly bool _ready;
     private bool _showVideos;
 
     /// <param name="photo">The photos' structure to start from.</param>
@@ -32,6 +33,7 @@ public sealed class FolderStructuresEditor : ObservableObject
         Videos = new FolderStructureEditor(video, FolderStructure.Branch.Video, separateFolders, Changed);
         SeparateFolders = separateFolders;
         SaveCommand = new RelayCommand(Save, () => CanSave);
+        _ready = true;
     }
 
     public FolderStructureEditor Photos { get; }
@@ -82,6 +84,8 @@ public sealed class FolderStructuresEditor : ObservableObject
 
     private void Changed()
     {
+        // The tabs report their first load while this is being made.
+        if (!_ready) return;
         OnPropertyChanged(nameof(Clash));
         OnPropertyChanged(nameof(CanSave));
         SaveCommand.RaiseCanExecuteChanged();
