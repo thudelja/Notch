@@ -154,6 +154,40 @@ read as absent, without failing the rest of the file. A version that reads a str
 writes the file without it, so extend the format with new optional fields whose absence means the
 current behaviour, rather than new kinds or values, wherever possible.
 
+### 2.2 A separate folder for videos
+
+Settings can name a second projects folder for videos (Mac `videosPath`, Windows `VideosFolder`;
+empty means "same as photos"). It is a projects folder like any other, with its own
+`.sdbackup/library.json` and `libraryID`, found again the same way (section 7.2).
+
+- A project created while it is set stores its ID as `videoLibraryID` (section 7.1). Its videos,
+  audio and video folders go to `<videos folder>/<relativeVideoFolder>`, built from the same
+  structure as the photos (the Photo / Video level stays). Photos stay under `libraryID`.
+- Projects without `videoLibraryID` (all earlier ones) keep their videos with their photos.
+- The videos folder's `library.json` also lists the projects whose videos it holds, with their
+  own `libraryID`; a reader must not reassign them to the videos folder when merging.
+- An import needs the photos' folder connected for photos and the videos' folder for videos and
+  audio.
+
+### 2.3 A project in a folder the user chose
+
+The import panel's **New project in a folder…** makes the project folder inside a folder the user
+picks, anywhere: `<picked folder>/<project folder name>`, named by the projects folder's structure
+(project level, section 2.1). The project stores `folder`: the path of that project folder below
+its projects folder, as components, e.g. `["2026", "AMD Koledar 2026", "02.11.2026 Ana"]`.
+
+- Its projects folder is the nearest folder at or above the picked one that has a
+  `.sdbackup/library.json` (usually the main projects folder, so the project moves with its year
+  and is found on other computers). A folder outside every projects folder becomes a projects
+  folder itself (a `library.json` is written in it).
+- Photos and videos both go into the project folder: photos into `<folder>/<camera>`, videos and
+  audio into `<folder>/<mediaFolder>/<camera>`, plus the video folders. Of the structure's levels,
+  only an Unedited / Exported split *inside* the project folder applies (files go into
+  `<folder>/<unedited>`, and `<folder>/<exported>` is made empty). A separate videos folder doesn't
+  apply.
+- If the picked folder is the photo or video project folder of a known project (or its `folder`),
+  the day is added to that project instead of making a new one.
+
 ## 3. Reading a card
 
 ### 3.1 Which volumes are cards
@@ -244,15 +278,18 @@ per card for files without camera info.
    with photo, video and audio counts and size. For each day the user picks:
    - **New project** with a name. By default the first day is a new project and every later day
      is "same as" it.
-   - **Same as** another day's new project on this card.
-   - One of the **3 most recently used projects**.
+   - **New project in a folder…**: opens a folder picker (section 2.3); the day then shows "New
+     project in “<folder>”" and a name field, or the chosen existing project.
+   - **Same as** another day's new project on this card (of either kind).
+   - One of the **2 most recently used projects**.
    - **Skip for now**: not imported, offered again next time.
 
    Below the days, the user can edit the **camera folder names**.
 4. **Resolve projects.** A new project starts on the **earliest** day assigned to it and is
-   created in the current projects folder, with a copy of that folder's structure (section 2.1).
-   If a project with the same name (case-insensitive), start day and projects folder already
-   exists, it is reused.
+   created in the current projects folder (with `videoLibraryID` when videos have their own
+   folder, section 2.2) or in its chosen folder (section 2.3), with a copy of the projects folder's
+   structure (section 2.1). If a project with the same name (case-insensitive), start day and
+   projects folder already exists, it is reused; in a chosen folder, the one with the same `folder`.
 5. **Plan:** each file goes to `targetDirectory(kind, project, camera)` (sections 2 and 2.1);
    sidecars go with their file. Video projects receiving files get their video folders; with an
    Unedited / Exported split, projects receiving files get their empty Exported folders.
@@ -313,8 +350,10 @@ Moves `<projects folder>/<year>` to `<chosen folder>/<year>` (`YearMigrator`):
    copied, checked or deleted stays and is reported.
 5. Afterwards delete `.DS_Store` and `._*` files and empty folders in the old year folder, deepest
    first, and the year folder itself if empty. Report how many items remain (for example symlinks).
-6. Projects of that year in the old projects folder now belong to the new one (their `libraryID`
-   changes, section 7.1). New projects are still created in the main projects folder.
+6. Projects whose photo folder starts with that year in the old projects folder now belong to the
+   new one (their `libraryID` changes, section 7.1). With a separate videos folder, the user picks
+   which folder to move the year from; moving it from the videos folder changes `videoLibraryID`
+   instead. New projects are still created in the main projects folder.
 
 Interrupted moves are safe to repeat: identical files already at the destination are recognised
 byte for byte and the originals deleted.
@@ -365,6 +404,9 @@ This file makes a projects folder portable between computers and operating syste
 - A project's folders are derived from its own structure: with the standard one,
   `relativePhotoFolder` = `["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"]`, joined with
   the OS separator under the projects folder.
+- `folder` (optional, a project made in a chosen folder, section 2.3) and `videoLibraryID`
+  (optional, videos in a separate projects folder, section 2.2) are left out when unused. A
+  `videoLibraryID` equal to the project's own `libraryID` means the same folder.
 - When a folder is opened, its projects are merged into the local list. A project already known
   locally is replaced only if the file's `lastUsed` is newer. Write the file only when its content
   would change, and keep its `structure` when rewriting it.
@@ -379,10 +421,13 @@ These hold paths or IDs that only make sense on one computer. They are not share
 | Where projects folders are | `~/Library/Application Support/SD Backup/libraries.json` | `[{libraryID, lastKnownPath, pathOnVolume, volumeName, markerPending?}]` |
 | Project cache | `…/SD Backup/projects.json` | `{"formatVersion": 2, "projects": [...]}`, same project objects as 7.1 |
 | Import records | `…/SD Backup/Imports/<card ID>.json` | section 7.3 |
-| Settings, camera names, history | UserDefaults (`destinationPath`, `autoBackupEnabled`, `cardDetection`, `verifyCopies`, `ejectWhenDone`, `notificationsEnabled`, `photoApp`, `lastMigrationPath`, `cameraModelAliases`, `cameraCardAliases`, `importHistory`) | |
+| Settings, camera names, history | UserDefaults (`destinationPath`, `videosPath`, `autoBackupEnabled`, `cardDetection`, `verifyCopies`, `ejectWhenDone`, `notificationsEnabled`, `photoApp`, `lastMigrationPath`, `cameraModelAliases`, `cameraCardAliases`, `importHistory`) | |
 | Log | `~/Library/Logs/SD Backup/backups.log` | plain text |
 
-The Mac folders keep the app's earlier name, SD Backup, so existing data carries over. The Windows version uses `%APPDATA%\Notch\` for the files and `%LOCALAPPDATA%\Notch\Logs\` for the log.
+The Mac folders keep the app's earlier name, SD Backup, so existing data carries over. The Mac app's
+identifier is `io.github.thudelja.notch` since 1.2; before, it was `com.sdbackup.SDBackup` (from the
+icon-less SD Backup builds, whose blank icon macOS kept showing in notifications). On first launch,
+1.2 copies the UserDefaults saved under the old identifier, once (`DefaultsMigration`). The Windows version uses `%APPDATA%\Notch\` for the files and `%LOCALAPPDATA%\Notch\Logs\` for the log.
 
 **Finding a projects folder again:** try `lastKnownPath`; it counts only if its `library.json` has
 the expected `libraryID`. Otherwise try `<root of each connected drive>/<pathOnVolume>`. On Mac the
@@ -450,4 +495,5 @@ The core tests describe the required behaviour. Port them first, then make them 
 | `ProjectImportTests.swift` | 12 | Classification, sidecar pairing, camera short names, date parsing, Sony XML, folder names, import records, card analysis, end-to-end import into the project layout, the photo hand-off |
 | `YearMigratorTests.swift` | 7 | Moving a year, resuming, strict duplicate checks, leftovers, refusing the same folder, disconnected drives, listing years |
 | `ProjectLibraryTests.swift` | 7 | `library.json` without absolute paths, stable IDs, finding a folder at a new mount point, rejecting look-alikes, relative project folders |
+| `ProjectLocationTests.swift` | 9 | Projects in a chosen folder (paths, the structure's folders inside it), videos in a separate projects folder (paths, Exported folders), the new `library.json` fields and the other platform's JSON |
 | `FolderStructureTests.swift` | 15 | The standard structure matches section 2, month and date styles, custom structures, Unedited / Exported above and inside the project folder, validation, projects keeping their structure, `structure` in `library.json` (round trip, the other platform's JSON, unreadable structures), moving a year |

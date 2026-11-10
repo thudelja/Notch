@@ -21,6 +21,26 @@ public partial class FlyoutWindow : Window
         {
             if (e.Key == Key.Escape) HideFlyout();
         };
+        // A folder picker opened from the panel takes the focus; keep the panel open behind it, and come back to it.
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is SDBackup.Windows.AppModel previous) previous.PanelDialogOpen -= OnPanelDialog;
+            if (e.NewValue is SDBackup.Windows.AppModel model) model.PanelDialogOpen += OnPanelDialog;
+        };
+    }
+
+    private bool _hideWhenDeactivatedBeforeDialog = true;
+
+    private void OnPanelDialog(bool open)
+    {
+        if (open)
+        {
+            _hideWhenDeactivatedBeforeDialog = HideWhenDeactivated;
+            HideWhenDeactivated = false;
+            return;
+        }
+        if (IsVisible) Activate();
+        HideWhenDeactivated = _hideWhenDeactivatedBeforeDialog;
     }
 
     /// <summary>Hide when another window is clicked (off for the self-test, where nothing keeps focus).</summary>

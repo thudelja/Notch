@@ -14,21 +14,31 @@ namespace SDBackup.Windows;
 public enum DayChoiceKind
 {
     Unassigned,
+    /// <summary>A new project in the projects folder.</summary>
     NewProject,
+    /// <summary>A new project in a folder the user chose: its dated folder is made inside it.</summary>
+    NewProjectIn,
     /// <summary>The same new project as another day on this card.</summary>
     SameAs,
     Existing,
+    /// <summary>"New project in a folder…": asks for the folder. Never stays selected.</summary>
+    ChooseFolder,
     Skip,
 }
 
 /// <summary>What the user picked for one shoot day.</summary>
-public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid? ProjectId = null)
+public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid? ProjectId = null, string? Folder = null)
 {
     public static readonly DayChoice Unassigned = new(DayChoiceKind.Unassigned);
     public static readonly DayChoice NewProject = new(DayChoiceKind.NewProject);
+    public static readonly DayChoice ChooseFolder = new(DayChoiceKind.ChooseFolder);
     public static readonly DayChoice Skip = new(DayChoiceKind.Skip);
+    public static DayChoice NewProjectIn(string folder) => new(DayChoiceKind.NewProjectIn, Folder: folder);
     public static DayChoice SameAs(ShootDay owner) => new(DayChoiceKind.SameAs, Owner: owner);
     public static DayChoice Existing(Guid projectId) => new(DayChoiceKind.Existing, ProjectId: projectId);
+
+    /// <summary>A new project, in the projects folder or in a chosen folder.</summary>
+    public bool IsNewProject => Kind is DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn;
 }
 
 /// <summary>An entry in a day's project picker. Kept (and its title updated) across refreshes so the picker keeps its selection.</summary>
@@ -51,6 +61,8 @@ public sealed class ImportDraftViewModel : ObservableObject
     private readonly Dictionary<ShootDay, DayChoice> _choices = new();
     private readonly Action<ImportDraftViewModel> _import;
     private readonly Action<ImportDraftViewModel> _dismiss;
+    private readonly Action<ImportDraftViewModel, ShootDay> _chooseFolder;
+    private readonly List<ProjectInfo> _chosenProjects = [];
 
     public ImportDraftViewModel(
         VolumeInfo volume,
@@ -58,13 +70,15 @@ public sealed class ImportDraftViewModel : ObservableObject
         IReadOnlyList<ProjectInfo> recentProjects,
         IReadOnlyDictionary<string, string> cameraNames,
         Action<ImportDraftViewModel> import,
-        Action<ImportDraftViewModel> dismiss)
+        Action<ImportDraftViewModel> dismiss,
+        Action<ImportDraftViewModel, ShootDay> chooseFolder)
     {
         Volume = volume;
         Analysis = analysis;
         RecentProjects = recentProjects;
         _import = import;
         _dismiss = dismiss;
+        _chooseFolder = chooseFolder;
 
         var days = analysis.Days;
         foreach (var summary in days)
@@ -116,13 +130,13 @@ public sealed class ImportDraftViewModel : ObservableObject
 
     public DayChoice ChoiceFor(ShootDay day) => _choices.GetValueOrDefault(day) ?? DayChoice.Unassigned;
 
-    internal void SetChoice(ShootDay day, DayChoice choice)
+    public void SetChoice(ShootDay day, DayChoice choice)
     {
         var previous = ChoiceFor(day);
-        if (previous == choice) return;
+        if (previous == choice || choice.Kind == DayChoiceKind.ChooseFolder) return;
         _choices[day] = choice;
         // Days that pointed at this day's new project need a new answer.
-        if (previous == DayChoice.NewProject && choice != DayChoice.NewProject)
+        if (previous.IsNewProject && !choice.IsNewProject)
         {
             foreach (var (other, value) in _choices.ToList())
             {
@@ -136,6 +150,26 @@ public sealed class ImportDraftViewModel : ObservableObject
     {
         RefreshOptions();
     }
+
+    /// <summary>The user chose the folder of an existing project for this day.</summary>
+    public void UseProject(ProjectInfo project, ShootDay day)
+    {
+        if (!KnownProjects.Any(p => p.Id == project.Id)) _chosenProjects.Add(project);
+        _choices[day] = DayChoice.Existing(project.Id);
+        RefreshOptions();
+    }
+
+    /// <summary>"New project in a folder…": asks for the folder once the picker has closed.</summary>
+    internal void ChooseFolder(ShootDay day)
+    {
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(() =>
+        {
+            _chooseFolder(this, day);
+            RefreshOptions();
+        });
+    }
+
+    private IEnumerable<ProjectInfo> KnownProjects => RecentProjects.Concat(_chosenProjects);
 
     private void RefreshOptions()
     {
@@ -152,14 +186,19 @@ public sealed class ImportDraftViewModel : ObservableObject
             (DayChoice.Unassigned, "Choose a project…"),
             (DayChoice.NewProject, "New project"),
         };
+        if (ChoiceFor(day) is { Kind: DayChoiceKind.NewProjectIn, Folder: { } folder } chosen)
+        {
+            options.Add((chosen, $"New project in “{System.IO.Path.GetFileName(folder.TrimEnd('\\', '/'))}”"));
+        }
+        options.Add((DayChoice.ChooseFolder, "New project in a folder…"));
         foreach (var row in Days)
         {
-            if (row.Day != day && ChoiceFor(row.Day) == DayChoice.NewProject)
+            if (row.Day != day && ChoiceFor(row.Day).IsNewProject)
             {
                 options.Add((DayChoice.SameAs(row.Day), $"Same as {NewProjectTitle(row.Day)}"));
             }
         }
-        foreach (var project in RecentProjects)
+        foreach (var project in KnownProjects)
         {
             var missing = IsOnConnectedDrive(project) ? "" : " (drive not connected)";
             options.Add((DayChoice.Existing(project.Id), $"{project.Name} · {project.StartDay.FolderDate}{missing}"));
@@ -177,7 +216,13 @@ public sealed class ImportDraftViewModel : ObservableObject
     internal string NameFor(ShootDay day) => Days.FirstOrDefault(d => d.Day == day)?.ProjectName.Trim() ?? "";
 
     private static bool IsOnConnectedDrive(ProjectInfo project) =>
-        project.RootPath.Length > 0 && System.IO.Directory.Exists(project.RootPath);
+        Exists(project.RootPath) && (!project.HasSeparateVideoFolder || Exists(project.VideoRoot));
+
+    /// <summary>Whether the folders this day's files go to are connected: the photos' and the videos'.</summary>
+    private static bool IsAvailable(ProjectInfo project, DaySummary summary) =>
+        (summary.Photos == 0 || Exists(project.RootPath)) && (summary.Videos + summary.Audio == 0 || Exists(project.VideoRoot));
+
+    private static bool Exists(string path) => path.Length > 0 && System.IO.Directory.Exists(path);
 
     public bool IsReady => BlockingReason is null;
 
@@ -192,18 +237,18 @@ public sealed class ImportDraftViewModel : ObservableObject
                 var choice = ChoiceFor(row.Day);
                 switch (choice.Kind)
                 {
-                    case DayChoiceKind.Unassigned:
+                    case DayChoiceKind.Unassigned or DayChoiceKind.ChooseFolder:
                         return $"Choose a project for {row.Day.FolderDate}.";
                     case DayChoiceKind.Skip:
                         continue;
-                    case DayChoiceKind.NewProject when NameFor(row.Day).Length == 0:
+                    case DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn when NameFor(row.Day).Length == 0:
                         return $"Type a name for the new project ({row.Day.FolderDate}).";
                     case DayChoiceKind.SameAs when choice.Owner is ShootDay owner
-                                                && (ChoiceFor(owner) != DayChoice.NewProject || NameFor(owner).Length == 0):
+                                                && (!ChoiceFor(owner).IsNewProject || NameFor(owner).Length == 0):
                         return $"Type a name for the new project ({owner.FolderDate}).";
                     case DayChoiceKind.Existing:
-                        var project = RecentProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
-                        if (project is not null && !IsOnConnectedDrive(project))
+                        var project = KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
+                        if (project is not null && !IsAvailable(project, row.Summary))
                         {
                             return $"“{project.Name}” is on a drive that isn’t connected. Connect it or choose another project.";
                         }
@@ -215,8 +260,12 @@ public sealed class ImportDraftViewModel : ObservableObject
         }
     }
 
-    /// <summary>The project for every day that isn't skipped; new projects start on their earliest day. Null if the projects folder isn't available.</summary>
-    public IReadOnlyDictionary<ShootDay, ProjectInfo>? ResolveProjects(LibraryStore store, string projectsFolder)
+    /// <summary>
+    /// The project for every day that isn't skipped; new projects start on their earliest day, in the projects folder
+    /// (videos in <paramref name="videosFolder"/>, when separate) or in the folder chosen for them. Null if a folder
+    /// isn't available.
+    /// </summary>
+    public IReadOnlyDictionary<ShootDay, ProjectInfo>? ResolveProjects(LibraryStore store, string projectsFolder, string? videosFolder)
     {
         var result = new Dictionary<ShootDay, ProjectInfo>();
         var newProjectDays = new Dictionary<ShootDay, List<ShootDay>>();
@@ -225,7 +274,7 @@ public sealed class ImportDraftViewModel : ObservableObject
             var choice = ChoiceFor(row.Day);
             switch (choice.Kind)
             {
-                case DayChoiceKind.NewProject:
+                case DayChoiceKind.NewProject or DayChoiceKind.NewProjectIn:
                     AddTo(newProjectDays, row.Day, row.Day);
                     break;
                 case DayChoiceKind.SameAs when choice.Owner is ShootDay owner:
@@ -238,8 +287,20 @@ public sealed class ImportDraftViewModel : ObservableObject
         }
         foreach (var (owner, members) in newProjectDays)
         {
-            if (ChoiceFor(owner) != DayChoice.NewProject) continue;
-            var project = store.ProjectNamed(NameFor(owner), members.Min(), projectsFolder);
+            var ownerChoice = ChoiceFor(owner);
+            ProjectInfo? project;
+            if (ownerChoice.Kind == DayChoiceKind.NewProject)
+            {
+                project = store.ProjectNamed(NameFor(owner), members.Min(), projectsFolder, videosFolder);
+            }
+            else if (ownerChoice is { Kind: DayChoiceKind.NewProjectIn, Folder: { } folder })
+            {
+                project = store.ProjectNamed(NameFor(owner), members.Min(), folder, store.Structure(projectsFolder));
+            }
+            else
+            {
+                continue;
+            }
             if (project is null) return null;
             foreach (var day in members) result[day] = project;
         }
@@ -302,11 +363,16 @@ public sealed class DayRowViewModel : ObservableObject
         {
             // The picker reports null when its selected option is removed during a refresh.
             if (value is null || _refreshing) return;
+            if (value.Kind == DayChoiceKind.ChooseFolder)
+            {
+                _owner.ChooseFolder(Day);
+                return;
+            }
             _owner.SetChoice(Day, value);
         }
     }
 
-    public bool IsNewProject => _owner.ChoiceFor(Day) == DayChoice.NewProject;
+    public bool IsNewProject => _owner.ChoiceFor(Day).IsNewProject;
 
     public string ProjectName
     {

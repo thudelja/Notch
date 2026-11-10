@@ -115,6 +115,7 @@ public sealed class AppSettings : ObservableObject
     private sealed record Stored
     {
         public string? ProjectsFolder { get; init; }
+        public string? VideosFolder { get; init; }
         public bool AutoImport { get; init; } = true;
         [JsonConverter(typeof(JsonStringEnumConverter))] public CardDetection Detection { get; init; } = CardDetection.MemoryCards;
         public bool VerifyCopies { get; init; } = true;
@@ -126,6 +127,7 @@ public sealed class AppSettings : ObservableObject
 
     private readonly string? _file;
     private string _projectsFolder;
+    private string _videosFolder;
     private bool _autoImport;
     private CardDetection _detection;
     private bool _verifyCopies;
@@ -140,6 +142,7 @@ public sealed class AppSettings : ObservableObject
         _file = file;
         var stored = (file is null ? null : Json.ReadFile<Stored>(file)) ?? new Stored();
         _projectsFolder = string.IsNullOrWhiteSpace(stored.ProjectsFolder) ? AppPaths.DefaultProjectsFolder : stored.ProjectsFolder;
+        _videosFolder = stored.VideosFolder ?? "";
         _autoImport = stored.AutoImport;
         _detection = stored.Detection;
         _verifyCopies = stored.VerifyCopies;
@@ -150,6 +153,18 @@ public sealed class AppSettings : ObservableObject
     }
 
     public string ProjectsFolder { get => _projectsFolder; set => Set(ref _projectsFolder, value); }
+
+    /// <summary>A separate projects folder for videos, or "" to keep them with the photos.</summary>
+    public string VideosFolder { get => _videosFolder; set => Set(ref _videosFolder, value ?? ""); }
+
+    /// <summary>The separate projects folder for videos, or null when videos go with the photos.</summary>
+    public string? SeparateVideosFolder =>
+        string.IsNullOrWhiteSpace(VideosFolder) || PathUtil.AreSame(VideosFolder, ProjectsFolder) ? null : VideosFolder;
+
+    public bool HasSeparateVideosFolder => SeparateVideosFolder is not null;
+
+    /// <summary>Settings: the videos folder, or "Same as photos".</summary>
+    public string VideosFolderText => SeparateVideosFolder ?? "Same as photos";
     public bool AutoImport { get => _autoImport; set => Set(ref _autoImport, value); }
     public CardDetection Detection { get => _detection; set => Set(ref _detection, value); }
     public bool VerifyCopies { get => _verifyCopies; set => Set(ref _verifyCopies, value); }
@@ -182,6 +197,12 @@ public sealed class AppSettings : ObservableObject
     private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
         if (!SetProperty(ref field, value, name)) return;
+        if (name is nameof(VideosFolder) or nameof(ProjectsFolder))
+        {
+            OnPropertyChanged(nameof(SeparateVideosFolder));
+            OnPropertyChanged(nameof(HasSeparateVideosFolder));
+            OnPropertyChanged(nameof(VideosFolderText));
+        }
         if (name == nameof(Detection))
         {
             OnPropertyChanged(nameof(DetectAnyRemovable));
@@ -203,6 +224,7 @@ public sealed class AppSettings : ObservableObject
             Json.WriteFile(_file, new Stored
             {
                 ProjectsFolder = _projectsFolder,
+                VideosFolder = _videosFolder,
                 AutoImport = _autoImport,
                 Detection = _detection,
                 VerifyCopies = _verifyCopies,

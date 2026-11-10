@@ -260,6 +260,7 @@ private struct ImportDraftView: View {
 }
 
 private struct DayRow: View {
+    @EnvironmentObject private var model: AppModel
     @ObservedObject var draft: ImportDraft
     let summary: DaySummary
 
@@ -287,7 +288,7 @@ private struct DayRow: View {
             .labelsHidden()
             .pickerStyle(.menu)
 
-            if draft.choice(for: summary.day) == .newProject {
+            if draft.choice(for: summary.day).isNewProject {
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
             }
@@ -306,7 +307,15 @@ private struct DayRow: View {
     private var choice: Binding<DayChoice> {
         Binding(
             get: { draft.choice(for: summary.day) },
-            set: { draft.setChoice($0, for: summary.day) }
+            set: { newValue in
+                if newValue == .chooseFolder {
+                    // After the menu has closed, so the folder panel can take focus.
+                    let day = summary.day
+                    DispatchQueue.main.async { [model, draft] in model.chooseProjectFolder(for: day, in: draft) }
+                } else {
+                    draft.setChoice(newValue, for: summary.day)
+                }
+            }
         )
     }
 

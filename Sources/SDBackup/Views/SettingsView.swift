@@ -9,21 +9,40 @@ struct SettingsView: View {
     @State private var selectedYear = 0
     @State private var structure: FolderStructure = .standard
     @State private var editingStructure = false
+    @State private var yearSource: AppModel.YearSource = .photos
 
     var body: some View {
         Form {
             Section("Projects folder") {
                 HStack {
-                    Image(systemName: "folder.fill")
+                    Image(systemName: "photo.on.rectangle")
                         .foregroundStyle(.secondary)
+                        .frame(width: 20)
+                    Text("Photos")
                     Text(settings.abbreviatedDestination)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
                     Button("Change…") { model.chooseDestination() }
                 }
+                HStack {
+                    Image(systemName: "video")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20)
+                    Text("Videos")
+                    Text(settings.abbreviatedVideos ?? "Same as photos")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    if settings.videosURL != nil {
+                        Button("Same as Photos") { model.keepVideosWithPhotos() }
+                    }
+                    Button("Change…") { model.chooseVideosFolder() }
+                }
                 HStack(alignment: .top) {
-                    Text(verbatim: structure.summary.joined(separator: "\n"))
+                    Text(verbatim: structureCaption)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -42,20 +61,31 @@ struct SettingsView: View {
                         ProgressView(value: migration.progress.phase == .copying ? migration.progress.fractionCompleted : nil)
                         Button("Stop") { model.cancelMigration() }
                     }
-                } else if years.isEmpty {
-                    Text("There are no year folders in the projects folder yet.")
-                        .foregroundStyle(.secondary)
                 } else {
-                    HStack {
-                        Picker("Year", selection: $selectedYear) {
-                            ForEach(years, id: \.self) { year in
-                                Text(verbatim: String(year)).tag(year)
-                            }
+                    if settings.videosURL != nil {
+                        Picker("From", selection: $yearSource) {
+                            Text("Photos folder").tag(AppModel.YearSource.photos)
+                            Text("Videos folder").tag(AppModel.YearSource.videos)
                         }
-                        .fixedSize()
-                        Spacer()
-                        Button("Move to Drive…") { model.moveYear(selectedYear) }
-                            .disabled(!years.contains(selectedYear) || model.active != nil)
+                        .pickerStyle(.segmented)
+                    }
+                    if years.isEmpty {
+                        Text(verbatim: yearSource == .videos && settings.videosURL != nil
+                            ? "There are no year folders in the videos folder yet."
+                            : "There are no year folders in the projects folder yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack {
+                            Picker("Year", selection: $selectedYear) {
+                                ForEach(years, id: \.self) { year in
+                                    Text(verbatim: String(year)).tag(year)
+                                }
+                            }
+                            .fixedSize()
+                            Spacer()
+                            Button("Move to Drive…") { model.moveYear(selectedYear, from: yearSource) }
+                                .disabled(!years.contains(selectedYear) || model.active != nil)
+                        }
                     }
                 }
                 Text("Moves the whole year (photos, videos and editing projects) to a folder you choose, for example on your SSD, keeping the same structure. Each file is verified before it’s deleted from this Mac. Moved projects keep working from the drive; new projects still go to this Mac.")
@@ -111,7 +141,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Memory") {
+            Section {
                 HStack {
                     Button("Forget Imported Files…") { model.forgetImportedFiles() }
                     Button("Forget Camera Names") { model.forgetCameraNames() }
@@ -120,6 +150,14 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Memory")
+            } footer: {
+                Text(verbatim: Self.versionText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 8)
             }
         }
         .formStyle(.grouped)
@@ -127,6 +165,11 @@ struct SettingsView: View {
         .onChange(of: settings.detection) { _ in model.refreshConnectedVolumes() }
         .onChange(of: model.migration == nil) { _ in reloadYears() }
         .onChange(of: settings.destinationPath) { _ in reloadYears() }
+        .onChange(of: settings.videosPath) { _ in
+            if settings.videosURL == nil { yearSource = .photos }
+            reloadYears()
+        }
+        .onChange(of: yearSource) { _ in reloadYears() }
         .onAppear { reloadYears() }
         .sheet(isPresented: $editingStructure) {
             FolderStructureView(structure: structure) { edited in
@@ -137,9 +180,24 @@ struct SettingsView: View {
         }
     }
 
+    /// "Notch 1.2.0"; builds that aren't releases are "0.0.0-dev".
+    static var versionText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return version.isEmpty || version.hasPrefix("0.0.0") ? "Notch (test build)" : "Notch \(version)"
+    }
+
+    /// The structure's example paths, and where videos go when they have their own folder.
+    private var structureCaption: String {
+        var lines = structure.summary
+        if let videos = settings.abbreviatedVideos {
+            lines.append("Videos are saved in \(videos), in the same structure.")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private func reloadYears() {
         structure = model.folderStructure()
-        years = model.availableYears()
+        years = model.availableYears(in: settings.videosURL == nil ? .photos : yearSource)
         if !years.contains(selectedYear), let oldest = years.first {
             selectedYear = oldest
         }

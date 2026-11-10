@@ -135,6 +135,7 @@ final class LibraryStore {
         }
         for index in projects.indices {
             projects[index].rootPath = roots[projects[index].libraryID]?.path ?? ""
+            projects[index].videoRootPath = projects[index].videoLibraryID.flatMap { roots[$0]?.path } ?? ""
         }
     }
 
@@ -158,7 +159,7 @@ final class LibraryStore {
 
     // MARK: - Projects
 
-    func recentProjects(limit: Int = 3) -> [ProjectInfo] {
+    func recentProjects(limit: Int = 2) -> [ProjectInfo] {
         Array(projects.sorted { $0.lastUsed > $1.lastUsed }.prefix(limit))
     }
 
@@ -167,20 +168,75 @@ final class LibraryStore {
     }
 
     /// The existing project with this name and start day in the projects folder at `root`, or a
-    /// new one there. Nil when that folder isn't available.
-    func projectNamed(_ name: String, startDay: ShootDay, in root: URL) -> ProjectInfo? {
+    /// new one there, with its videos in `videosRoot` when that is a separate folder. Nil when a
+    /// folder isn't available.
+    func projectNamed(_ name: String, startDay: ShootDay, in root: URL, videosRoot: URL? = nil) -> ProjectInfo? {
         guard let libraryID = library(at: root) else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let rootPath = root.standardizedFileURL.path
         if var existing = projects.first(where: {
-            $0.libraryID == libraryID && $0.startDay == startDay && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
+            $0.libraryID == libraryID && $0.folder == nil && $0.startDay == startDay
+                && $0.name.caseInsensitiveCompare(trimmed) == .orderedSame
         }) {
             existing.rootPath = rootPath
             return existing
         }
+        var videoLibraryID: UUID?
+        var videoRootPath = ""
+        if let videosRoot, videosRoot.standardizedFileURL.path != rootPath {
+            // A videos folder on a drive that isn't connected is still recorded; its videos wait for it.
+            let path = videosRoot.standardizedFileURL.path
+            guard let id = library(at: videosRoot) ?? locations.values.first(where: { $0.lastKnownPath == path })?.libraryID
+            else { return nil }
+            videoLibraryID = id
+            videoRootPath = FileManager.default.fileExists(atPath: path) ? path : ""
+        }
         // A new project follows the folder's current structure, and keeps it from then on.
         let structure = LibraryManifest.read(from: root.standardizedFileURL)?.structure
-        return ProjectInfo(name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure, rootPath: rootPath)
+        return ProjectInfo(
+            name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure,
+            videoLibraryID: videoLibraryID, rootPath: rootPath, videoRootPath: videoRootPath
+        )
+    }
+
+    /// A project in `parent`, a folder the user chose: its folder is `parent/<date and name>`, named
+    /// by `structure`, and both photos and videos go into it. The project belongs to the nearest
+    /// projects folder at or above `parent` (so it moves with its year and is found again on another
+    /// computer); a folder outside every projects folder becomes one. Nil when it can't be written.
+    func projectNamed(_ name: String, startDay: ShootDay, inFolder parent: URL, structure: FolderStructure) -> ProjectInfo? {
+        let parent = parent.standardizedFileURL
+        guard let root = projectsFolder(containing: parent) ?? (library(at: parent) == nil ? nil : parent),
+              let libraryID = library(at: root)
+        else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let relative = Array(parent.pathComponents.dropFirst(root.pathComponents.count))
+        let folder = relative + [structure.projectFolderName(name: trimmed, startDay: startDay)]
+        if var existing = projects.first(where: { $0.libraryID == libraryID && $0.folder == folder }) {
+            existing.rootPath = root.path
+            return existing
+        }
+        return ProjectInfo(name: trimmed, startDay: startDay, libraryID: libraryID, structure: structure, folder: folder, rootPath: root.path)
+    }
+
+    /// The known project whose folder is `folder` (its photo or video project folder, or the folder
+    /// it was created in), if any.
+    func project(atFolder folder: URL) -> ProjectInfo? {
+        let path = folder.standardizedFileURL.path
+        return projects.first { project in
+            !project.rootPath.isEmpty
+                && ProjectLayout.projectFolders(for: project).contains { $0.standardizedFileURL.path == path }
+        }
+    }
+
+    /// The nearest folder at or above `folder` that is a projects folder (has a library.json).
+    private func projectsFolder(containing folder: URL) -> URL? {
+        var current = folder.standardizedFileURL
+        while true {
+            if LibraryManifest.read(from: current) != nil { return current }
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            if parent.path == current.path { return nil }
+            current = parent
+        }
     }
 
     /// Saves new projects and moves the given ones to the top of the recent list.
@@ -199,10 +255,14 @@ final class LibraryStore {
         for project in used where !project.rootPath.isEmpty {
             writeManifest(for: project.libraryID, at: URL(fileURLWithPath: project.rootPath, isDirectory: true))
         }
+        for project in used where project.hasSeparateVideoFolder && !project.videoRootPath.isEmpty {
+            writeManifest(for: project.videoLibrary, at: URL(fileURLWithPath: project.videoRootPath, isDirectory: true))
+        }
     }
 
-    /// After a year was moved: its projects now belong to the projects folder at `newRoot`.
-    /// Returns how many projects changed.
+    /// After a year folder was moved from `oldRoot` to `newRoot`: the projects (or, for projects
+    /// with a separate videos folder, the videos) in it now belong to the projects folder at
+    /// `newRoot`. Returns how many projects changed.
     @discardableResult
     func moveProjects(year: Int, from oldRoot: URL, to newRoot: URL) -> Int {
         guard let oldID = LibraryManifest.read(from: oldRoot)?.libraryID
@@ -210,18 +270,46 @@ final class LibraryStore {
               let newID = library(at: newRoot)
         else { return 0 }
 
-        var changed = 0
-        for index in projects.indices where projects[index].libraryID == oldID && projects[index].startDay.year == year {
-            projects[index].libraryID = newID
-            projects[index].rootPath = newRoot.standardizedFileURL.path
-            changed += 1
+        let yearText = String(year)
+        let newPath = newRoot.standardizedFileURL.path
+        var changed: [ProjectInfo] = []
+        for index in projects.indices {
+            var project = projects[index]
+            var moved = false
+            if project.libraryID == oldID, ProjectLayout.relativePhotoFolder(for: project).first == yearText {
+                project.libraryID = newID
+                project.rootPath = newPath
+                moved = true
+            }
+            if project.hasSeparateVideoFolder, project.videoLibraryID == oldID,
+               ProjectLayout.relativeVideoFolder(for: project).first == yearText {
+                project.videoLibraryID = newID
+                project.videoRootPath = newPath
+                moved = true
+            }
+            guard moved else { continue }
+            if project.videoLibraryID == project.libraryID {
+                project.videoLibraryID = nil
+                project.videoRootPath = ""
+            }
+            projects[index] = project
+            changed.append(project)
         }
-        if changed > 0 {
+        if !changed.isEmpty {
             saveCache()
             writeManifest(for: oldID, at: oldRoot)
             writeManifest(for: newID, at: newRoot)
+            // The other folder each project lives in lists it too.
+            for project in changed {
+                if !project.rootPath.isEmpty, project.libraryID != newID {
+                    writeManifest(for: project.libraryID, at: URL(fileURLWithPath: project.rootPath, isDirectory: true))
+                }
+                if project.hasSeparateVideoFolder, !project.videoRootPath.isEmpty, project.videoLibrary != newID {
+                    writeManifest(for: project.videoLibrary, at: URL(fileURLWithPath: project.videoRootPath, isDirectory: true))
+                }
+            }
         }
-        return changed
+        return changed.count
     }
 
     // MARK: - Camera names
@@ -304,8 +392,16 @@ final class LibraryStore {
     private func merge(_ manifest: LibraryManifest, at root: URL) {
         var changed = false
         for var incoming in manifest.projects {
-            incoming.libraryID = manifest.libraryID
-            incoming.rootPath = root.path
+            let known = projects.first { $0.id == incoming.id }
+            if incoming.hasSeparateVideoFolder, incoming.videoLibraryID == manifest.libraryID {
+                // A videos folder lists the projects whose videos it holds; they belong to another folder.
+                incoming.videoRootPath = root.path
+                incoming.rootPath = known?.rootPath ?? ""
+            } else {
+                incoming.libraryID = manifest.libraryID
+                incoming.rootPath = root.path
+                incoming.videoRootPath = known?.videoRootPath ?? ""
+            }
             if let index = projects.firstIndex(where: { $0.id == incoming.id }) {
                 if incoming.lastUsed > projects[index].lastUsed {
                     projects[index] = incoming
@@ -322,8 +418,13 @@ final class LibraryStore {
     }
 
     private func setRoot(_ root: URL, for libraryID: UUID) {
-        for index in projects.indices where projects[index].libraryID == libraryID {
-            projects[index].rootPath = root.path
+        for index in projects.indices {
+            if projects[index].libraryID == libraryID {
+                projects[index].rootPath = root.path
+            }
+            if projects[index].videoLibraryID == libraryID {
+                projects[index].videoRootPath = root.path
+            }
         }
     }
 
@@ -334,7 +435,7 @@ final class LibraryStore {
         if let existing, existing.libraryID != libraryID { return }
         let updated = LibraryManifest(
             libraryID: libraryID,
-            projects: projects.filter { $0.libraryID == libraryID },
+            projects: projects.filter { $0.libraryID == libraryID || ($0.hasSeparateVideoFolder && $0.videoLibraryID == libraryID) },
             structure: existing?.structure
         )
         if let existing, Self.encoded(existing) == Self.encoded(updated) { return }

@@ -36,7 +36,8 @@ public sealed record LibraryManifest
     public static LibraryManifest Create(Guid libraryId, IEnumerable<ProjectInfo> projects, FolderStructure? structure = null) => new()
     {
         LibraryId = libraryId,
-        Projects = projects.Select(p => p.Portable with { LibraryId = libraryId }).ToList(),
+        // A projects folder for videos also lists the projects whose videos it holds; they keep their own library.
+        Projects = projects.Select(p => p.VideoLibraryId == libraryId ? p.Portable : p.Portable with { LibraryId = libraryId }).ToList(),
         Structure = structure,
     };
 

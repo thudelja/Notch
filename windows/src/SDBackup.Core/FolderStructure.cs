@@ -182,6 +182,37 @@ public sealed record FolderStructure
     public IReadOnlyList<string>? ExportedPath(Branch branch, string name, ShootDay startDay) =>
         HasSplit ? Components(branch, name, startDay, exported: true) : null;
 
+    /// <summary>The path down to and including the project folder (with the Unedited name when the split is above it).</summary>
+    public IReadOnlyList<string> ProjectPath(Branch branch, string name, ShootDay startDay)
+    {
+        var files = FilesPath(branch, name, startDay);
+        var inside = InsideProjectFiles.Count;
+        return files.Count > inside ? files.Take(files.Count - inside).ToList() : files;
+    }
+
+    /// <summary>The split level when it comes after the project folder.</summary>
+    private FolderLevel? SplitInsideProject
+    {
+        get
+        {
+            var project = Levels.ToList().FindIndex(l => l.Kind == FolderLevel.LevelKind.Project);
+            return project < 0 ? null : Levels.Skip(project + 1).FirstOrDefault(l => l.Kind == FolderLevel.LevelKind.Split);
+        }
+    }
+
+    /// <summary>
+    /// The folders between the project folder and its files: the Unedited folder when the split is inside the project
+    /// folder, else none. Used for projects in a folder the user chose.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> InsideProjectFiles =>
+        SplitInsideProject is { } split ? [Safe(split.Unedited, "Unedited")] : [];
+
+    /// <summary>The empty Exported folder inside the project folder, when the split is inside it.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string>? InsideProjectExported =>
+        SplitInsideProject is { } split ? [Safe(split.Exported, "Exported")] : null;
+
     private List<string> Components(Branch branch, string name, ShootDay startDay, bool exported)
     {
         var path = new List<string> { $"{startDay.Year:0000}" };

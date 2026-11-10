@@ -13,6 +13,28 @@ enum LoginItem {
     }
 }
 
+/// Until 1.2, Notch used the identifier of its first builds, called SD Backup, which had no icon. macOS
+/// kept showing that identifier's blank icon in notifications, so Notch now has its own identifier, and
+/// this copies the settings saved under the old one (projects folder, camera names, history, …) once.
+enum DefaultsMigration {
+    static let previousIdentifier = "com.sdbackup.SDBackup"
+    private static let doneKey = "migratedFromSDBackup"
+    /// Not copied: the new identifier sets up its own login item.
+    private static let skippedKeys: Set<String> = ["loginItemConfigured", "loginItemConfigured.notch"]
+
+    static func run(defaults: UserDefaults = .standard) {
+        guard let identifier = Bundle.main.bundleIdentifier, identifier != previousIdentifier,
+              !defaults.bool(forKey: doneKey)
+        else { return }
+        let existing = defaults.persistentDomain(forName: identifier) ?? [:]
+        let previous = defaults.persistentDomain(forName: previousIdentifier) ?? [:]
+        for (key, value) in previous where existing[key] == nil && !skippedKeys.contains(key) {
+            defaults.set(value, forKey: key)
+        }
+        defaults.set(true, forKey: doneKey)
+    }
+}
+
 @MainActor
 enum AppActivation {
     /// Menu bar apps are never frontmost on their own; call before showing a window or panel.

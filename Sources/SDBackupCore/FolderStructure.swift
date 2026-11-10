@@ -197,6 +197,30 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         hasSplit ? components(branch, name: name, startDay: startDay, exported: true) : nil
     }
 
+    /// The path down to and including the project folder (with the Unedited name when the split
+    /// is above it).
+    public func projectPath(_ branch: Branch, name: String, startDay: ShootDay) -> [String] {
+        let files = filesPath(branch, name: name, startDay: startDay)
+        return files.count > insideProjectFiles.count ? Array(files.dropLast(insideProjectFiles.count)) : files
+    }
+
+    /// The split level when it comes after the project folder.
+    private var splitInsideProject: FolderLevel? {
+        guard let project = levels.firstIndex(where: { $0.kind == .project }) else { return nil }
+        return levels[(project + 1)...].first { $0.kind == .split }
+    }
+
+    /// The folders between the project folder and its files: the Unedited folder when the split is
+    /// inside the project folder, else none. Used for projects in a folder the user chose.
+    public var insideProjectFiles: [String] {
+        splitInsideProject.map { [Self.safe($0.unedited, fallback: "Unedited")] } ?? []
+    }
+
+    /// The empty Exported folder inside the project folder, when the split is inside it.
+    public var insideProjectExported: [String]? {
+        splitInsideProject.map { [Self.safe($0.exported, fallback: "Exported")] }
+    }
+
     private func components(_ branch: Branch, name: String, startDay: ShootDay, exported: Bool) -> [String] {
         var path = [String(startDay.year)]
         var passedSplit = false

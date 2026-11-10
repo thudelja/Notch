@@ -11,7 +11,7 @@
 	<key>CFBundleExecutable</key>
 	<string>SDBackup</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.sdbackup.SDBackup</string>
+	<string>io.github.thudelja.notch</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

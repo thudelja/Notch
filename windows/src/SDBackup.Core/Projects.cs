@@ -6,13 +6,29 @@ namespace SDBackup.Core;
 
 /// <summary>
 /// A shoot that cards are imported into. Saved records contain no absolute paths: a project names its
-/// projects folder ("library") by ID, and its folders are derived from its name, start day and folder structure.
+/// projects folder ("library") by ID, and its folders are derived from its name, start day and folder structure,
+/// or from the folder it was created in.
 /// </summary>
 public sealed record ProjectInfo
 {
     private readonly FolderStructure? _structure;
+    private readonly IReadOnlyList<string>? _folder;
+    private readonly Guid? _videoLibraryId;
 
     // Declared alphabetically, matching the Mac version's sorted JSON keys.
+
+    /// <summary>
+    /// For a project created in a folder the user chose: the project folder's path below its projects folder, e.g.
+    /// ["2026", "AMD Koledar 2026", "02.11.2026 Ana"]. Photos and videos both go into it. Null for projects laid out
+    /// by the structure.
+    /// </summary>
+    [JsonPropertyName("folder")]
+    public IReadOnlyList<string>? Folder
+    {
+        get => _folder;
+        init => _folder = value is { Count: > 0 } ? value.ToList() : null;
+    }
+
     [JsonPropertyName("id")] public Guid Id { get; init; } = Guid.NewGuid();
     [JsonPropertyName("lastUsed")] public DateTime LastUsed { get; init; } = DateTime.UtcNow;
     [JsonPropertyName("libraryID")] public Guid LibraryId { get; init; } = Guid.NewGuid();
@@ -30,17 +46,53 @@ public sealed record ProjectInfo
         init => _structure = value is { IsStandard: true } ? null : value;
     }
 
+    /// <summary>The projects folder holding this project's videos, when videos go to a separate folder. Null: the same as <see cref="LibraryId"/>.</summary>
+    [JsonPropertyName("videoLibraryID")]
+    public Guid? VideoLibraryId
+    {
+        get => _videoLibraryId == LibraryId ? null : _videoLibraryId;
+        init => _videoLibraryId = value;
+    }
+
     /// <summary>Where the projects folder is on this computer right now, or "" when its drive isn't connected. Never saved.</summary>
     [JsonIgnore] public string RootPath { get; init; } = "";
+
+    /// <summary>Where the videos' projects folder is on this computer right now (with <see cref="VideoLibraryId"/>), or "". Never saved.</summary>
+    [JsonIgnore] public string VideoRootPath { get; init; } = "";
 
     /// <summary>The structure the project's folders follow.</summary>
     [JsonIgnore] public FolderStructure Layout => Structure is { IsValid: true } structure ? structure : FolderStructure.Standard;
 
     /// <summary>"02.11.2026 Ana Wedding"</summary>
-    [JsonIgnore] public string FolderName => Layout.ProjectFolderNameFor(Name, StartDay);
+    [JsonIgnore] public string FolderName => Folder is { Count: > 0 } folder ? folder[^1] : Layout.ProjectFolderNameFor(Name, StartDay);
 
-    /// <summary>The record as saved: without this computer's path.</summary>
-    [JsonIgnore] public ProjectInfo Portable => this with { RootPath = "" };
+    /// <summary>Videos go to another projects folder than photos.</summary>
+    [JsonIgnore] public bool HasSeparateVideoFolder => VideoLibraryId is not null && Folder is null;
+
+    /// <summary>The ID of the projects folder holding the videos.</summary>
+    [JsonIgnore] public Guid VideoLibrary => HasSeparateVideoFolder ? VideoLibraryId!.Value : LibraryId;
+
+    /// <summary>Where the projects folder holding the videos is on this computer, or "".</summary>
+    [JsonIgnore] public string VideoRoot => HasSeparateVideoFolder ? VideoRootPath : RootPath;
+
+    /// <summary>The record as saved: without this computer's paths.</summary>
+    [JsonIgnore] public ProjectInfo Portable => this with { RootPath = "", VideoRootPath = "" };
+
+    // The folder is a list: compare it by its items.
+    public bool Equals(ProjectInfo? other) =>
+        other is not null
+        && Id == other.Id
+        && LastUsed == other.LastUsed
+        && LibraryId == other.LibraryId
+        && Name == other.Name
+        && StartDay == other.StartDay
+        && Equals(Structure, other.Structure)
+        && (Folder ?? []).SequenceEqual(other.Folder ?? [], StringComparer.Ordinal)
+        && VideoLibraryId == other.VideoLibraryId
+        && RootPath == other.RootPath
+        && VideoRootPath == other.VideoRootPath;
+
+    public override int GetHashCode() => HashCode.Combine(Id, LibraryId, Name, StartDay, RootPath);
 }
 
 /// <summary>Everything needed to copy a card's files into their projects, plus the video project skeletons and empty Exported folders.</summary>
@@ -70,17 +122,46 @@ public static class ProjectLayout
 
     /// <summary>The photo folder relative to the projects folder: ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"].</summary>
     public static IReadOnlyList<string> RelativePhotoFolder(ProjectInfo project) =>
-        project.Layout.FilesPath(FolderStructure.Branch.Photo, project.Name, project.StartDay);
+        project.Folder is { } folder
+            ? [.. folder, .. project.Layout.InsideProjectFiles]
+            : project.Layout.FilesPath(FolderStructure.Branch.Photo, project.Name, project.StartDay);
 
-    /// <summary>["2026", "Video", "11 November", "02.11.2026 Ana Wedding"]</summary>
+    /// <summary>["2026", "Video", "11 November", "02.11.2026 Ana Wedding"], relative to the videos' projects folder.</summary>
     public static IReadOnlyList<string> RelativeVideoFolder(ProjectInfo project) =>
-        project.Layout.FilesPath(FolderStructure.Branch.Video, project.Name, project.StartDay);
+        project.Folder is { } folder
+            ? [.. folder, .. project.Layout.InsideProjectFiles]
+            : project.Layout.FilesPath(FolderStructure.Branch.Video, project.Name, project.StartDay);
 
     /// <summary>The folder holding the project's photo camera folders.</summary>
-    public static string PhotoFolder(ProjectInfo project) => Under(project, RelativePhotoFolder(project));
+    public static string PhotoFolder(ProjectInfo project) => Under(project.RootPath, RelativePhotoFolder(project));
 
-    /// <summary>The folder holding the project's video folders (Media, Project, …).</summary>
-    public static string VideoFolder(ProjectInfo project) => Under(project, RelativeVideoFolder(project));
+    /// <summary>The folder holding the project's video folders (Media, Project, …), in the videos' projects folder.</summary>
+    public static string VideoFolder(ProjectInfo project) => Under(project.VideoRoot, RelativeVideoFolder(project));
+
+    /// <summary>The project's folders: the photo and video project folders (one for a project in a chosen folder).</summary>
+    public static IReadOnlyList<string> ProjectFolders(ProjectInfo project)
+    {
+        if (project.Folder is { } folder) return [Under(project.RootPath, folder)];
+        var layout = project.Layout;
+        return
+        [
+            Under(project.RootPath, layout.ProjectPath(FolderStructure.Branch.Photo, project.Name, project.StartDay)),
+            Under(project.VideoRoot, layout.ProjectPath(FolderStructure.Branch.Video, project.Name, project.StartDay)),
+        ];
+    }
+
+    /// <summary>The project's empty Exported folder for photos or videos, if its structure has a split.</summary>
+    public static string? ExportedFolder(FolderStructure.Branch branch, ProjectInfo project)
+    {
+        var layout = project.Layout;
+        if (project.Folder is { } folder)
+        {
+            return layout.InsideProjectExported is { } inside ? Under(project.RootPath, [.. folder, .. inside]) : null;
+        }
+        return layout.ExportedPath(branch, project.Name, project.StartDay) is { } exported
+            ? Under(branch == FolderStructure.Branch.Photo ? project.RootPath : project.VideoRoot, exported)
+            : null;
+    }
 
     /// <summary>
     /// Photos go into the photo project folder; videos and audio into the video project's media folder. Both get a
@@ -120,16 +201,16 @@ public static class ProjectLayout
         foreach (var project in videoProjects.Values)
         {
             foreach (var name in project.Layout.VideoFolders) folders.Add(Path.Combine(VideoFolder(project), FolderStructure.Safe(name, "Folder")));
-            if (project.Layout.ExportedPath(FolderStructure.Branch.Video, project.Name, project.StartDay) is { } exported) folders.Add(Under(project, exported));
+            if (ExportedFolder(FolderStructure.Branch.Video, project) is { } exported) folders.Add(exported);
         }
         foreach (var project in photoProjects.Values)
         {
-            if (project.Layout.ExportedPath(FolderStructure.Branch.Photo, project.Name, project.StartDay) is { } exported) folders.Add(Under(project, exported));
+            if (ExportedFolder(FolderStructure.Branch.Photo, project) is { } exported) folders.Add(exported);
         }
         return new ImportPlan(copies, folders.OrderBy(f => f, StringComparer.Ordinal).ToList());
     }
 
-    private static string Under(ProjectInfo project, IReadOnlyList<string> components) => Path.Combine([project.RootPath, .. components]);
+    private static string Under(string root, IReadOnlyList<string> components) => Path.Combine([root, .. components]);
 }
 
 /// <summary>
