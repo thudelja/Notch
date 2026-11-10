@@ -186,8 +186,14 @@ public struct FolderStructure: Codable, Hashable, Sendable {
 
     /// Where a project's files go: for photos the folder holding the camera folders, for videos the
     /// folder holding the video folders. Ends in the Unedited folder when the split comes after the
-    /// project folder. A project of a multi-day shoot (`series`) sits in the shoot's folder, which
-    /// takes the project folder's place: …/AMD Koledar 2026/02.11.2026 Ana.
+    /// project folder.
+    ///
+    /// A multi-day shoot (`series`) has a folder of its own, which takes the month's place (or, in a
+    /// structure without months, sits just above the project folder):
+    /// - photos: each day's project folder goes in it: 2026/Foto/Unprocessed/AMD Koledar 2026/02.11.2026 Ana;
+    /// - videos: the shoot is one video project: its folder holds the video folders (Media, Assets, …)
+    ///   for the whole shoot, and each day's folder goes in the media folder (`mediaDayFolder`):
+    ///   2026/Video/AMD Koledar 2026, with Media/02.11.2026 Ana/R5 inside.
     public func filesPath(_ branch: Branch, name: String, startDay: ShootDay, series: String? = nil) -> [String] {
         components(branch, name: name, startDay: startDay, series: series, exported: false)
     }
@@ -232,16 +238,32 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         splitInsideProject.map { [Self.safe($0.exported, fallback: "Exported")] }
     }
 
+    /// For videos of a multi-day shoot: the day's own folder inside the shoot's media folder,
+    /// ["02.11.2026 Ana"]; otherwise none.
+    public func mediaDayFolder(_ branch: Branch, name: String, startDay: ShootDay, series: String?) -> [String] {
+        guard branch == .video, Self.shootFolder(series) != nil else { return [] }
+        return [projectFolderName(name: name, startDay: startDay)]
+    }
+
+    /// A multi-day shoot's folder name, or nil for no shoot.
+    static func shootFolder(_ series: String?) -> String? {
+        guard let series, !series.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return safe(series, fallback: "Shoot")
+    }
+
     private func components(_ branch: Branch, name: String, startDay: ShootDay, series: String?, exported: Bool) -> [String] {
         var path = [String(startDay.year)]
         var passedSplit = false
         var passedProject = false
+        let shoot = Self.shootFolder(series)
+        let hasMonth = levels.contains { $0.kind == .month }
         for level in levels {
             switch level.kind {
             case .mediaType:
                 path.append(branch == .photo ? Self.safe(level.photo, fallback: "Photo") : Self.safe(level.video, fallback: "Video"))
             case .month:
-                path.append(Self.monthFolderName(startDay, style: level.monthStyle ?? .numberAndName, language: level.monthLanguage ?? .english))
+                // A multi-day shoot's folder takes the month's place.
+                path.append(shoot ?? Self.monthFolderName(startDay, style: level.monthStyle ?? .numberAndName, language: level.monthLanguage ?? .english))
             case .text:
                 path.append(Self.safe(level.text, fallback: "Folder"))
             case .split:
@@ -250,10 +272,13 @@ public struct FolderStructure: Codable, Hashable, Sendable {
                 // Split inside the project folder: …/Name/Exported
                 if exported, passedProject { return path }
             case .project:
-                if let series, !series.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    path.append(Self.safe(series, fallback: "Shoot"))
+                if let shoot, !hasMonth {
+                    path.append(shoot)
                 }
-                path.append(Self.projectFolderName(name: name, startDay: startDay, level: level))
+                // A multi-day shoot's videos share the shoot's folder; each day's folder goes in the media folder.
+                if !(branch == .video && shoot != nil) {
+                    path.append(Self.projectFolderName(name: name, startDay: startDay, level: level))
+                }
                 passedProject = true
                 // Split above the project folder: …/Exported/…/Name
                 if exported, passedSplit { return path }
@@ -355,7 +380,8 @@ public struct FolderStructure: Codable, Hashable, Sendable {
             return filesPath(.photo, name: "Ana Wedding", startDay: day, series: series) + camera + ["IMG_0001.CR3"]
         case .video:
             let media: [String] = mediaFolder.isEmpty ? [] : [Self.safe(mediaFolder, fallback: "Media")]
-            return filesPath(.video, name: "Ana Wedding", startDay: day, series: series) + media + camera + ["C0001.MP4"]
+            return filesPath(.video, name: "Ana Wedding", startDay: day, series: series) + media
+                + mediaDayFolder(.video, name: "Ana Wedding", startDay: day, series: series) + camera + ["C0001.MP4"]
         }
     }
 

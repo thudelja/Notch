@@ -52,7 +52,7 @@ struct HoldToFinishButton: View {
             .help(String(localized: "Hold for 1.5 seconds"))
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction(perform: finish)
+            .accessibilityAction { finish() }
         }
     }
 

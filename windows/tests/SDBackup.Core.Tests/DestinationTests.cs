@@ -94,28 +94,84 @@ public sealed class DestinationTests : Sandbox
     // ------------------------------------------------------------------ Multi-day shoots
 
     [Fact]
-    public void AMultiDayShootsFolderTakesTheProjectFoldersPlace()
+    public void AMultiDayShootsFolderTakesTheMonthsPlace()
     {
+        // With a month level, the shoot's folder replaces the month.
+        Assert.Equal(["2026", "Photo", "AMD Koledar 2026", "02.11.2026 Ana"],
+            FolderStructure.Standard.FilesPath(FolderStructure.Branch.Photo, "Ana", Day, "AMD Koledar 2026"));
+        // Without one, it goes just above the project folder.
+        Assert.Equal(["2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana"],
+            PhotoStructure.FilesPath(FolderStructure.Branch.Photo, "Ana", Day, "AMD Koledar 2026"));
+        // Videos: the shoot's folder is the video project; the day's folder goes in the media folder.
+        Assert.Equal(["2026", "Video", "AMD Koledar 2026"],
+            FolderStructure.Standard.FilesPath(FolderStructure.Branch.Video, "Ana", Day, "AMD Koledar 2026"));
+        Assert.Equal(["02.11.2026 Ana"], FolderStructure.Standard.MediaDayFolder(FolderStructure.Branch.Video, "Ana", Day, "AMD Koledar 2026"));
+        Assert.Empty(FolderStructure.Standard.MediaDayFolder(FolderStructure.Branch.Photo, "Ana", Day, "AMD Koledar 2026"));
+        Assert.Empty(FolderStructure.Standard.MediaDayFolder(FolderStructure.Branch.Video, "Ana", Day, null));
+        // The shoot's name is made safe like a project name; a blank one means no shoot.
+        Assert.Equal(["2026", "Photo", "a-b", "02.11.2026 Ana"], FolderStructure.Standard.FilesPath(FolderStructure.Branch.Photo, "Ana", Day, " a/b "));
+        Assert.Null(new ProjectInfo { Series = "  " }.Series);
+
         var project = Project("AMD Koledar 2026");
         Assert.Equal(Under(_projects, "2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana", "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, project, "R5"));
         Assert.Equal(Under(_projects, "2026", "Photo", "Exported", "AMD Koledar 2026", "02.11.2026 Ana"), ProjectLayout.ExportedFolder(FolderStructure.Branch.Photo, project));
-        Assert.Equal(Under(_projects, "2026", "Video", "AMD Koledar 2026", "02.11.2026 Ana", "Media", "R5"), ProjectLayout.TargetDirectory(MediaKind.Video, project, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana", "R5"), ProjectLayout.TargetDirectory(MediaKind.Video, project, "R5"));
         Assert.Equal(
-            [Under(_projects, "2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana"), Under(_projects, "2026", "Video", "AMD Koledar 2026", "02.11.2026 Ana")],
+            [Under(_projects, "2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana"), Under(_projects, "2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana")],
             ProjectLayout.ProjectFolders(project));
+    }
 
-        // With a month level, the shoot's folder sits in the month of each shoot.
-        Assert.Equal(["2026", "Photo", "11 November", "AMD Koledar 2026", "02.11.2026 Ana"],
-            FolderStructure.Standard.FilesPath(FolderStructure.Branch.Photo, "Ana", Day, "AMD Koledar 2026"));
-        // The shoot's name is made safe like a project name.
-        Assert.Equal(["2026", "Photo", "11 November", "a-b", "02.11.2026 Ana"],
-            FolderStructure.Standard.FilesPath(FolderStructure.Branch.Photo, "Ana", Day, " a/b "));
-        Assert.Null(new ProjectInfo { Series = "  " }.Series);
+    /// <summary>Tilen's drawing: Foto › Unprocessed / Exported › month › project, and Video › month › project.</summary>
+    private static FolderStructure DrawingPhotos => new()
+    {
+        Levels = [MediaTypeLevel("Foto", "Video"), SplitLevel("Unprocessed", "Exported"), MonthLevel(), ProjectLevel()],
+    };
 
-        Import(project);
-        Assert.True(Exists(_projects, "2026/Photo/Unedited/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.CR3"));
-        Assert.True(Exists(_projects, "2026/Photo/Exported/AMD Koledar 2026/02.11.2026 Ana"));
-        Assert.True(Exists(_projects, "2026/Video/AMD Koledar 2026/02.11.2026 Ana/Media/R5/MVI_0002.MP4"));
+    private static FolderStructure DrawingVideos => new()
+    {
+        Levels = [MediaTypeLevel("Foto", "Video"), MonthLevel(), ProjectLevel()],
+        VideoFolders = ["Media", "Assets", "Projects", "Export"],
+    };
+
+    [Fact]
+    public void TilensDrawing()
+    {
+        // A project of its own.
+        var single = new ProjectInfo { Name = "Ana", StartDay = Day, RootPath = _projects, Structure = DrawingPhotos, VideoStructure = DrawingVideos };
+        Assert.Equal(Under(_projects, "2026", "Foto", "Unprocessed", "11 November", "02.11.2026 Ana", "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, single, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Foto", "Exported", "11 November", "02.11.2026 Ana"), ProjectLayout.ExportedFolder(FolderStructure.Branch.Photo, single));
+        Assert.Equal(Under(_projects, "2026", "Video", "11 November", "02.11.2026 Ana", "Media", "R5"), ProjectLayout.TargetDirectory(MediaKind.Video, single, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Video", "11 November", "02.11.2026 Ana", "Media", "DJI Mic"), ProjectLayout.TargetDirectory(MediaKind.Audio, single, "DJI Mic"));
+
+        // Two days of a multi-day shoot: photos in a folder per day, videos in one video project.
+        var ana = single with { Series = "AMD Koledar 2026" };
+        var maja = ana with { Id = Guid.NewGuid(), Name = "Maja", StartDay = new ShootDay(2026, 11, 9) };
+        Assert.Equal(Under(_projects, "2026", "Foto", "Unprocessed", "AMD Koledar 2026", "02.11.2026 Ana", "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, ana, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Foto", "Unprocessed", "AMD Koledar 2026", "09.11.2026 Maja", "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, maja, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Foto", "Exported", "AMD Koledar 2026", "09.11.2026 Maja"), ProjectLayout.ExportedFolder(FolderStructure.Branch.Photo, maja));
+        Assert.Equal(Under(_projects, "2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana", "R5"), ProjectLayout.TargetDirectory(MediaKind.Video, ana, "R5"));
+        Assert.Equal(Under(_projects, "2026", "Video", "AMD Koledar 2026", "Media", "09.11.2026 Maja", "DJI Mic"), ProjectLayout.TargetDirectory(MediaKind.Audio, maja, "DJI Mic"));
+        Assert.Equal(Under(_projects, "2026", "Video", "AMD Koledar 2026"), ProjectLayout.VideoFolder(ana));
+        Assert.Equal(ProjectLayout.VideoFolder(ana), ProjectLayout.VideoFolder(maja));
+
+        Import(ana);
+        foreach (var path in new[]
+                 {
+                     "2026/Foto/Unprocessed/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.CR3",
+                     "2026/Foto/Unprocessed/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.XMP",
+                     "2026/Foto/Exported/AMD Koledar 2026/02.11.2026 Ana",
+                     "2026/Video/AMD Koledar 2026/Media/02.11.2026 Ana/R5/MVI_0002.MP4",
+                     "2026/Video/AMD Koledar 2026/Media/02.11.2026 Ana/Zoom H5/ZOOM0001.WAV",
+                     "2026/Video/AMD Koledar 2026/Assets",
+                     "2026/Video/AMD Koledar 2026/Projects",
+                     "2026/Video/AMD Koledar 2026/Export",
+                 })
+        {
+            Assert.True(Exists(_projects, path), $"Missing {path}");
+        }
+        Assert.False(Exists(_projects, "2026/Foto/Unprocessed/11 November"));
+        Assert.False(Exists(_projects, "2026/Video/11 November"));
+        Assert.False(Exists(_projects, "2026/Video/AMD Koledar 2026/02.11.2026 Ana"));
     }
 
     // ------------------------------------------------------------------ Folders chosen per media

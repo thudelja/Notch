@@ -161,12 +161,15 @@ public static class ProjectLayout
     public static string ProjectFolderName(string name, ShootDay startDay) => FolderStructure.ProjectFolderName(name, startDay);
 
     /// <summary>Where one kind of a project's files goes: the projects folder, the structure, and paths below that folder.</summary>
+    /// <param name="ProjectFolder">The project folder itself (for a multi-day shoot's videos: the day's folder in the media folder).</param>
+    /// <param name="MediaDayFolder">For a multi-day shoot's videos: the day's folder inside the media folder.</param>
     private sealed record Placement(
         string Root,
         FolderStructure Layout,
         IReadOnlyList<string> Files,
         IReadOnlyList<string>? Exported,
-        IReadOnlyList<string> ProjectFolder);
+        IReadOnlyList<string> ProjectFolder,
+        IReadOnlyList<string> MediaDayFolder);
 
     private static Placement PlacementOf(FolderStructure.Branch branch, ProjectInfo project)
     {
@@ -181,12 +184,17 @@ public static class ProjectLayout
             return new Placement(root, layout,
                 [.. chosen, .. layout.InsideProjectFiles],
                 layout.InsideProjectExported is { } inside ? [.. chosen, .. inside] : null,
-                chosen);
+                chosen,
+                []);
         }
+        var dayFolder = layout.MediaDayFolder(branch, project.Name, project.StartDay, project.Series);
+        var projectPath = layout.ProjectPath(branch, project.Name, project.StartDay, project.Series);
+        string[] media = layout.MediaFolder.Length > 0 ? [FolderStructure.Safe(layout.MediaFolder, "Media")] : [];
         return new Placement(root, layout,
             layout.FilesPath(branch, project.Name, project.StartDay, project.Series),
             layout.ExportedPath(branch, project.Name, project.StartDay, project.Series),
-            layout.ProjectPath(branch, project.Name, project.StartDay, project.Series));
+            dayFolder.Count == 0 ? projectPath : [.. projectPath, .. media, .. dayFolder],
+            dayFolder);
     }
 
     /// <summary>The photo folder relative to the projects folder: ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"].</summary>
@@ -233,6 +241,8 @@ public static class ProjectLayout
         {
             directory = Path.Combine(directory, FolderStructure.Safe(layout.MediaFolder, "Media"));
         }
+        // A multi-day shoot's videos: the day's folder inside the media folder.
+        if (kind != MediaKind.Photo) directory = Path.Combine([directory, .. PlacementOf(FolderStructure.Branch.Video, project).MediaDayFolder]);
         return layout.CameraFolders ? Path.Combine(directory, NameRules.SanitizedFolderName(camera, "Camera")) : directory;
     }
 

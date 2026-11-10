@@ -171,9 +171,14 @@ public sealed record FolderStructure
 
     /// <summary>
     /// Where a project's files go: for photos the folder holding the camera folders, for videos the folder holding the
-    /// video folders. Ends in the Unedited folder when the split comes after the project folder. A project of a
-    /// multi-day shoot (<paramref name="series"/>) sits in the shoot's folder, which takes the project folder's place:
-    /// …\AMD Koledar 2026.11.2026 Ana.
+    /// video folders. Ends in the Unedited folder when the split comes after the project folder.
+    /// <para>
+    /// A multi-day shoot (<paramref name="series"/>) has a folder of its own, which takes the month's place (or, in a
+    /// structure without months, sits just above the project folder). Photos: each day's project folder goes in it,
+    /// 2026\Foto\Unprocessed\AMD Koledar 2026\02.11.2026 Ana. Videos: the shoot is one video project; its folder holds
+    /// the video folders (Media, Assets, …) for the whole shoot, and each day's folder goes in the media folder
+    /// (<see cref="MediaDayFolder"/>): 2026\Video\AMD Koledar 2026, with Media\02.11.2026 Ana\R5 inside.
+    /// </para>
     /// </summary>
     public IReadOnlyList<string> FilesPath(Branch branch, string name, ShootDay startDay, string? series = null) =>
         Components(branch, name, startDay, series, exported: false);
@@ -222,11 +227,20 @@ public sealed record FolderStructure
 
     [JsonIgnore] public bool HasMediaType => Levels.Any(l => l.Kind == FolderLevel.LevelKind.MediaType);
 
+    /// <summary>For videos of a multi-day shoot: the day's own folder inside the shoot's media folder, ["02.11.2026 Ana"]; otherwise none.</summary>
+    public IReadOnlyList<string> MediaDayFolder(Branch branch, string name, ShootDay startDay, string? series) =>
+        branch == Branch.Video && ShootFolder(series) is not null ? [ProjectFolderNameFor(name, startDay)] : [];
+
+    /// <summary>A multi-day shoot's folder name, or null for no shoot.</summary>
+    internal static string? ShootFolder(string? series) => string.IsNullOrWhiteSpace(series) ? null : Safe(series, "Shoot");
+
     private List<string> Components(Branch branch, string name, ShootDay startDay, string? series, bool exported)
     {
         var path = new List<string> { $"{startDay.Year:0000}" };
         var passedSplit = false;
         var passedProject = false;
+        var shoot = ShootFolder(series);
+        var hasMonth = Levels.Any(l => l.Kind == FolderLevel.LevelKind.Month);
         foreach (var level in Levels)
         {
             switch (level.Kind)
@@ -235,7 +249,8 @@ public sealed record FolderStructure
                     path.Add(branch == Branch.Photo ? Safe(level.Photo, "Photo") : Safe(level.Video, "Video"));
                     break;
                 case FolderLevel.LevelKind.Month:
-                    path.Add(MonthFolderName(startDay, level.MonthStyle ?? FolderLevel.MonthStyles.NumberAndName,
+                    // A multi-day shoot's folder takes the month's place.
+                    path.Add(shoot ?? MonthFolderName(startDay, level.MonthStyle ?? FolderLevel.MonthStyles.NumberAndName,
                         level.MonthLanguage ?? FolderLevel.MonthLanguages.English));
                     break;
                 case FolderLevel.LevelKind.Text:
@@ -248,8 +263,9 @@ public sealed record FolderStructure
                     if (exported && passedProject) return path;
                     break;
                 case FolderLevel.LevelKind.Project:
-                    if (!string.IsNullOrWhiteSpace(series)) path.Add(Safe(series, "Shoot"));
-                    path.Add(ProjectFolderName(name, startDay, level));
+                    if (shoot is not null && !hasMonth) path.Add(shoot);
+                    // A multi-day shoot's videos share the shoot's folder; each day's folder goes in the media folder.
+                    if (!(branch == Branch.Video && shoot is not null)) path.Add(ProjectFolderName(name, startDay, level));
                     passedProject = true;
                     // Split above the project folder: …\Exported\…\Name
                     if (exported && passedSplit) return path;
@@ -345,6 +361,36 @@ public sealed record FolderStructure
             }
             return lines;
         }
+    }
+
+    /// <summary>
+    /// A sample file's path for photos or videos (2 November 2026, project "Ana Wedding", camera "R5"), for the editor
+    /// and Settings: e.g. ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding", "R5", "IMG_0001.CR3"].
+    /// </summary>
+    public IReadOnlyList<string> ExamplePath(Branch branch, string? series = null)
+    {
+        var day = new ShootDay(2026, 11, 2);
+        string[] camera = CameraFolders ? ["R5"] : [];
+        if (branch == Branch.Photo) return [.. FilesPath(Branch.Photo, "Ana Wedding", day, series), .. camera, "IMG_0001.CR3"];
+        string[] media = MediaFolder.Length > 0 ? [Safe(MediaFolder, "Media")] : [];
+        return [.. FilesPath(Branch.Video, "Ana Wedding", day, series), .. media, .. MediaDayFolder(Branch.Video, "Ana Wedding", day, series), .. camera, "C0001.MP4"];
+    }
+
+    /// <summary>The sample project's empty Exported folder for photos or videos, with a split.</summary>
+    public IReadOnlyList<string>? ExampleExports(Branch branch, string? series = null) =>
+        ExportedPath(branch, "Ana Wedding", new ShootDay(2026, 11, 2), series);
+
+    /// <summary>The problems that matter for one kind of files: a photo structure's video folders are never used.</summary>
+    public IReadOnlyList<string> ProblemsFor(Branch branch)
+    {
+        if (branch != Branch.Photo) return Problems;
+        string[] videoOnly =
+        [
+            "Every video project folder needs a name.",
+            "Video project folders need different names.",
+            "The folder for videos must be one of the video project folders.",
+        ];
+        return Problems.Where(p => !videoOnly.Contains(p)).ToList();
     }
 
     /// <summary>Sample paths for the structure editor: where a photo and a video go, and with a split the empty Exported folders.</summary>

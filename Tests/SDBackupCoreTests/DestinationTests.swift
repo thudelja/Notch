@@ -116,31 +116,93 @@ final class DestinationTests: XCTestCase {
 
     // MARK: - Multi-day shoots
 
-    func testAMultiDayShootsFolderTakesTheProjectFoldersPlace() async throws {
-        let project = makeProject(series: "AMD Koledar 2026")
+    func testAMultiDayShootsFolderTakesTheMonthsPlace() {
+        let shoot = "AMD Koledar 2026"
+        // With a month level, the shoot's folder replaces the month.
+        XCTAssertEqual(FolderStructure.standard.filesPath(.photo, name: "Ana", startDay: day, series: shoot),
+                       ["2026", "Photo", "AMD Koledar 2026", "02.11.2026 Ana"])
+        // Without one, it goes just above the project folder.
+        XCTAssertEqual(photoStructure.filesPath(.photo, name: "Ana", startDay: day, series: shoot),
+                       ["2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana"])
+        // Videos: the shoot's folder is the video project; the day's folder goes in the media folder.
+        XCTAssertEqual(FolderStructure.standard.filesPath(.video, name: "Ana", startDay: day, series: shoot),
+                       ["2026", "Video", "AMD Koledar 2026"])
+        XCTAssertEqual(FolderStructure.standard.mediaDayFolder(.video, name: "Ana", startDay: day, series: shoot), ["02.11.2026 Ana"])
+        XCTAssertEqual(FolderStructure.standard.mediaDayFolder(.photo, name: "Ana", startDay: day, series: shoot), [])
+        XCTAssertEqual(FolderStructure.standard.mediaDayFolder(.video, name: "Ana", startDay: day, series: nil), [])
+        // The shoot's name is made safe like a project name; a blank one means no shoot.
+        XCTAssertEqual(FolderStructure.standard.filesPath(.photo, name: "Ana", startDay: day, series: " a/b "),
+                       ["2026", "Photo", "a-b", "02.11.2026 Ana"])
+        XCTAssertNil(ProjectInfo(name: "x", startDay: day, series: "  ").series)
+
+        let project = makeProject(series: shoot)
         XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: project, camera: "R5").path,
                        under(projects, ["2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana", "R5"]))
         XCTAssertEqual(ProjectLayout.exportedFolder(.photo, for: project)?.path,
                        under(projects, ["2026", "Photo", "Exported", "AMD Koledar 2026", "02.11.2026 Ana"]))
         XCTAssertEqual(ProjectLayout.targetDirectory(kind: .video, project: project, camera: "R5").path,
-                       under(projects, ["2026", "Video", "AMD Koledar 2026", "02.11.2026 Ana", "Media", "R5"]))
+                       under(projects, ["2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana", "R5"]))
         XCTAssertEqual(ProjectLayout.projectFolders(for: project).map(\.path), [
             under(projects, ["2026", "Photo", "Unedited", "AMD Koledar 2026", "02.11.2026 Ana"]),
-            under(projects, ["2026", "Video", "AMD Koledar 2026", "02.11.2026 Ana"]),
+            under(projects, ["2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana"]),
         ])
+    }
 
-        // With a month level, the shoot's folder sits in the month of each shoot.
-        XCTAssertEqual(FolderStructure.standard.filesPath(.photo, name: "Ana", startDay: day, series: "AMD Koledar 2026"),
-                       ["2026", "Photo", "11 November", "AMD Koledar 2026", "02.11.2026 Ana"])
-        // The shoot's name is made safe like a project name.
-        XCTAssertEqual(FolderStructure.standard.filesPath(.photo, name: "Ana", startDay: day, series: " a/b "),
-                       ["2026", "Photo", "11 November", "a-b", "02.11.2026 Ana"])
-        XCTAssertNil(ProjectInfo(name: "x", startDay: day, series: "  ").series)
+    /// Tilen's drawing: Foto › Unprocessed / Exported › month › project, and Video › month › project.
+    private let drawingPhotos = FolderStructure(levels: [
+        .mediaType(photo: "Foto", video: "Video"), .split(unedited: "Unprocessed", exported: "Exported"), .month(), .project(),
+    ])
+    private let drawingVideos = FolderStructure(
+        levels: [.mediaType(photo: "Foto", video: "Video"), .month(), .project()],
+        videoFolders: ["Media", "Assets", "Projects", "Export"]
+    )
 
-        try await importCard(into: project)
-        XCTAssertTrue(exists(projects, "2026/Photo/Unedited/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.CR3"))
-        XCTAssertTrue(exists(projects, "2026/Photo/Exported/AMD Koledar 2026/02.11.2026 Ana"))
-        XCTAssertTrue(exists(projects, "2026/Video/AMD Koledar 2026/02.11.2026 Ana/Media/R5/MVI_0002.MP4"))
+    func testTilensDrawing() async throws {
+        // A project of its own.
+        let single = ProjectInfo(name: "Ana", startDay: day, structure: drawingPhotos, videoStructure: drawingVideos, rootPath: projects.path)
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: single, camera: "R5").path,
+                       under(projects, ["2026", "Foto", "Unprocessed", "11 November", "02.11.2026 Ana", "R5"]))
+        XCTAssertEqual(ProjectLayout.exportedFolder(.photo, for: single)?.path,
+                       under(projects, ["2026", "Foto", "Exported", "11 November", "02.11.2026 Ana"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .video, project: single, camera: "R5").path,
+                       under(projects, ["2026", "Video", "11 November", "02.11.2026 Ana", "Media", "R5"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .audio, project: single, camera: "DJI Mic").path,
+                       under(projects, ["2026", "Video", "11 November", "02.11.2026 Ana", "Media", "DJI Mic"]))
+
+        // Two days of a multi-day shoot: photos in a folder per day, videos in one video project.
+        var ana = single
+        ana.series = "AMD Koledar 2026"
+        let maja = ProjectInfo(name: "Maja", startDay: ShootDay(year: 2026, month: 11, day: 9), structure: drawingPhotos,
+                               videoStructure: drawingVideos, series: "AMD Koledar 2026", rootPath: projects.path)
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: ana, camera: "R5").path,
+                       under(projects, ["2026", "Foto", "Unprocessed", "AMD Koledar 2026", "02.11.2026 Ana", "R5"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: maja, camera: "R5").path,
+                       under(projects, ["2026", "Foto", "Unprocessed", "AMD Koledar 2026", "09.11.2026 Maja", "R5"]))
+        XCTAssertEqual(ProjectLayout.exportedFolder(.photo, for: maja)?.path,
+                       under(projects, ["2026", "Foto", "Exported", "AMD Koledar 2026", "09.11.2026 Maja"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .video, project: ana, camera: "R5").path,
+                       under(projects, ["2026", "Video", "AMD Koledar 2026", "Media", "02.11.2026 Ana", "R5"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .audio, project: maja, camera: "DJI Mic").path,
+                       under(projects, ["2026", "Video", "AMD Koledar 2026", "Media", "09.11.2026 Maja", "DJI Mic"]))
+        XCTAssertEqual(ProjectLayout.videoFolder(for: ana).path, under(projects, ["2026", "Video", "AMD Koledar 2026"]))
+        XCTAssertEqual(ProjectLayout.videoFolder(for: ana), ProjectLayout.videoFolder(for: maja))
+
+        try await importCard(into: ana)
+        for path in [
+            "2026/Foto/Unprocessed/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.CR3",
+            "2026/Foto/Unprocessed/AMD Koledar 2026/02.11.2026 Ana/R5/IMG_0001.XMP",
+            "2026/Foto/Exported/AMD Koledar 2026/02.11.2026 Ana",
+            "2026/Video/AMD Koledar 2026/Media/02.11.2026 Ana/R5/MVI_0002.MP4",
+            "2026/Video/AMD Koledar 2026/Media/02.11.2026 Ana/Zoom H5/ZOOM0001.WAV",
+            "2026/Video/AMD Koledar 2026/Assets",
+            "2026/Video/AMD Koledar 2026/Projects",
+            "2026/Video/AMD Koledar 2026/Export",
+        ] {
+            XCTAssertTrue(exists(projects, path), "Missing \(path)")
+        }
+        XCTAssertFalse(exists(projects, "2026/Foto/Unprocessed/11 November"))
+        XCTAssertFalse(exists(projects, "2026/Video/11 November"))
+        XCTAssertFalse(exists(projects, "2026/Video/AMD Koledar 2026/02.11.2026 Ana"))
     }
 
     // MARK: - Folders chosen per media

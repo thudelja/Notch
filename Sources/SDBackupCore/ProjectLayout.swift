@@ -183,8 +183,10 @@ public enum ProjectLayout {
         let files: [String]
         /// The empty Exported folder, with an Unedited / Exported split.
         let exported: [String]?
-        /// The project folder itself.
+        /// The project folder itself (for a multi-day shoot's videos: the day's folder in the media folder).
         let projectFolder: [String]
+        /// For a multi-day shoot's videos: the day's folder inside the media folder.
+        let mediaDayFolder: [String]
     }
 
     static func placement(_ branch: FolderStructure.Branch, for project: ProjectInfo) -> Placement {
@@ -204,14 +206,19 @@ public enum ProjectLayout {
                 root: root, layout: layout,
                 files: chosen + layout.insideProjectFiles,
                 exported: layout.insideProjectExported.map { chosen + $0 },
-                projectFolder: chosen
+                projectFolder: chosen,
+                mediaDayFolder: []
             )
         }
+        let dayFolder = layout.mediaDayFolder(branch, name: project.name, startDay: project.startDay, series: project.series)
+        let projectPath = layout.projectPath(branch, name: project.name, startDay: project.startDay, series: project.series)
+        let media: [String] = layout.mediaFolder.isEmpty ? [] : [FolderStructure.safe(layout.mediaFolder, fallback: "Media")]
         return Placement(
             root: root, layout: layout,
             files: layout.filesPath(branch, name: project.name, startDay: project.startDay, series: project.series),
             exported: layout.exportedPath(branch, name: project.name, startDay: project.startDay, series: project.series),
-            projectFolder: layout.projectPath(branch, name: project.name, startDay: project.startDay, series: project.series)
+            projectFolder: dayFolder.isEmpty ? projectPath : projectPath + media + dayFolder,
+            mediaDayFolder: dayFolder
         )
     }
 
@@ -255,6 +262,10 @@ public enum ProjectLayout {
             directory = videoFolder(for: project)
             if !layout.mediaFolder.isEmpty {
                 directory.appendPathComponent(FolderStructure.safe(layout.mediaFolder, fallback: "Media"), isDirectory: true)
+            }
+            // A multi-day shoot's videos: the day's folder inside the media folder.
+            for component in placement(.video, for: project).mediaDayFolder {
+                directory.appendPathComponent(component, isDirectory: true)
             }
         }
         if layout.cameraFolders {

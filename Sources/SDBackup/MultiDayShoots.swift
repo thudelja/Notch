@@ -1,4 +1,5 @@
 import Foundation
+import SDBackupCore
 
 /// A shoot over several days or cards, e.g. a calendar: its folder ("AMD Koledar 2026") takes the
 /// project folder's place in the folder structures, and each day's project goes inside it.
