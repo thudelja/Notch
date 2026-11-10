@@ -61,6 +61,7 @@ public sealed class AppModel : ObservableObject, IDisposable
     private StatusViewModel? _migrationStatus;
     private readonly List<HistoryEntry> _history;
     private int _selectedYear;
+    private bool _yearsFromVideos;
 
     public AppModel(AppSettings settings, LibraryStore library, BackupLog log, IDialogs dialogs, Action<string, string> notify, string? historyFile)
     {
@@ -81,6 +82,8 @@ public sealed class AppModel : ObservableObject, IDisposable
         OpenLogCommand = new RelayCommand(OpenLog);
         QuitCommand = new RelayCommand(Quit);
         ChangeProjectsFolderCommand = new RelayCommand(ChangeProjectsFolder);
+        ChangeVideosFolderCommand = new RelayCommand(ChangeVideosFolder);
+        KeepVideosWithPhotosCommand = new RelayCommand(() => Settings.VideosFolder = "");
         MoveYearCommand = new RelayCommand(() => MoveYear(SelectedYear), () => CanMoveYear);
         ForgetImportedFilesCommand = new RelayCommand(ForgetImportedFiles);
         ForgetCameraNamesCommand = new RelayCommand(() => Library.ForgetCameraNames());
@@ -90,7 +93,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         {
             if (e.PropertyName is nameof(AppSettings.AutoImport)) UpdateIdleStatus();
             if (e.PropertyName is nameof(AppSettings.Detection) or nameof(AppSettings.ProjectsFolder)) RefreshCards();
-            if (e.PropertyName is nameof(AppSettings.ProjectsFolder))
+            if (e.PropertyName is nameof(AppSettings.ProjectsFolder) or nameof(AppSettings.VideosFolder))
             {
                 OnPropertyChanged(nameof(ProjectsFolderName));
                 RefreshYears();
@@ -150,7 +153,15 @@ public sealed class AppModel : ObservableObject, IDisposable
     }
 
     /// <summary>"Photos: 2026 › Photo › …" and "Videos: …": where new projects go (Settings › Projects folder).</summary>
-    public string FolderStructureSummary => string.Join(Environment.NewLine, Library.Structure(Settings.ProjectsFolder).Summary);
+    public string FolderStructureSummary
+    {
+        get
+        {
+            var lines = Library.Structure(Settings.ProjectsFolder).Summary.ToList();
+            if (Settings.SeparateVideosFolder is { } videos) lines.Add($"Videos are saved in {videos}, in the same structure.");
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public bool CanMoveYear => !IsMigrating && _activeJob is null && Years.Contains(SelectedYear);
     public bool HasYears => Years.Count > 0;
@@ -177,12 +188,16 @@ public sealed class AppModel : ObservableObject, IDisposable
     public ICommand OpenLogCommand { get; }
     public ICommand QuitCommand { get; }
     public ICommand ChangeProjectsFolderCommand { get; }
+    public ICommand ChangeVideosFolderCommand { get; }
+    public ICommand KeepVideosWithPhotosCommand { get; }
     public ICommand MoveYearCommand { get; }
     public ICommand ForgetImportedFilesCommand { get; }
     public ICommand ForgetCameraNamesCommand { get; }
     public ICommand ClearHistoryCommand { get; }
 
     public event Action? SettingsRequested;
+    /// <summary>True while a folder picker opened from the panel is up, so the panel stays open behind it.</summary>
+    public event Action<bool>? PanelDialogOpen;
     public event Action? QuitRequested;
     /// <summary>Raised when the number of cards waiting for a project changes (for the tray icon).</summary>
     public event Action<int>? WaitingCountChanged;
@@ -385,7 +400,7 @@ public sealed class AppModel : ObservableObject, IDisposable
                 ?? (analysis.CameraModels.Count == 1 ? names[analysis.CameraModels[0]] : null)
                 ?? "Camera";
         }
-        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), names, StartImport, Dismiss);
+        var draft = new ImportDraftViewModel(volume, analysis, Library.RecentProjects(), names, StartImport, Dismiss, ChooseProjectFolder);
         _drafts.Add(draft);
         DraftsChanged();
         Log.Write($"Read “{volume.DisplayName}”: {analysis.Items.Count} new files on {draft.Days.Count} shoot day(s), {analysis.AlreadyImported} imported before");
@@ -405,14 +420,20 @@ public sealed class AppModel : ObservableObject, IDisposable
     {
         if (!draft.IsReady) return;
         Library.RefreshLocations();
-        var projects = draft.ResolveProjects(Library, Settings.ProjectsFolder);
+        var projects = draft.ResolveProjects(Library, Settings.ProjectsFolder, Settings.SeparateVideosFolder);
         if (projects is null)
         {
+            var folders = Settings.SeparateVideosFolder is { } videos ? $"{Settings.ProjectsFolder} or {videos}" : Settings.ProjectsFolder;
             _dialogs.Alert("The projects folder isn’t available",
-                $"{Settings.ProjectsFolder} can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings.");
+                $"{folders} can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings.");
             return;
         }
-        if (projects.Values.FirstOrDefault(p => p.RootPath.Length == 0) is { } offline)
+        // Each file needs its folder's drive: the photos' or the videos'.
+        var offline = draft.Analysis.Items
+            .Select(item => projects.TryGetValue(item.Day, out var project)
+                && (item.Kind == MediaKind.Photo ? project.RootPath : project.VideoRoot).Length == 0 ? project : null)
+            .FirstOrDefault(project => project is not null);
+        if (offline is not null)
         {
             _dialogs.Alert("Connect the drive", $"“{offline.Name}” is on a drive that isn’t connected. Connect it and click Import again.");
             return;
@@ -592,10 +613,30 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     // ------------------------------------------------------------------ Moving a year
 
+    /// <summary>Settings › Move a year: from the separate videos folder rather than the projects folder.</summary>
+    public bool YearsFromVideos
+    {
+        get => _yearsFromVideos && Settings.HasSeparateVideosFolder;
+        set
+        {
+            if (SetProperty(ref _yearsFromVideos, value)) RefreshYears();
+        }
+    }
+
+    public IReadOnlyList<EnumChoice<bool>> YearSourceChoices { get; } = [new(false, "Photos folder"), new(true, "Videos folder")];
+
+    public string NoYearsText => YearsFromVideos
+        ? "There are no year folders in the videos folder yet."
+        : "There are no year folders in the projects folder yet.";
+
+    private string YearsRoot => YearsFromVideos ? Settings.SeparateVideosFolder! : Settings.ProjectsFolder;
+
     public void RefreshYears()
     {
         OnPropertyChanged(nameof(FolderStructureSummary));
-        var years = YearMigrator.Years(Settings.ProjectsFolder);
+        OnPropertyChanged(nameof(YearsFromVideos));
+        OnPropertyChanged(nameof(NoYearsText));
+        var years = YearMigrator.Years(YearsRoot);
         if (!Years.SequenceEqual(years))
         {
             Years.Clear();
@@ -630,7 +671,7 @@ public sealed class AppModel : ObservableObject, IDisposable
             $"Choose a folder on the drive to move {yearText} to (for example a Projects folder on your SSD)",
             Settings.LastMigrationPath);
         if (destinationRoot is null) return;
-        var sourceRoot = Settings.ProjectsFolder;
+        var sourceRoot = YearsRoot;
         if (PathUtil.AreSame(destinationRoot, sourceRoot))
         {
             _dialogs.Alert("Choose another folder", $"{yearText} is already in that folder. Pick a folder on the other drive.");
@@ -641,7 +682,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         var target = Path.Combine(destinationRoot, yearText);
         var confirmed = _dialogs.Confirm(
             $"Move {yearText} to “{driveName}”?",
-            $"Everything in {yearText}, including photos, videos and editing projects, is copied to {target}. Each file is checked against the original and then deleted from this PC.\n\n" +
+            $"Everything in {Path.Combine(sourceRoot, yearText)}, including photos, videos and editing projects, is copied to {target}. Each file is checked against the original and then deleted from this PC.\n\n" +
             $"Projects from {yearText} will open from “{driveName}” from now on. New projects still go to this PC. " +
             "Editing projects that link to these files (Premiere Pro, DaVinci Resolve, …) may ask you to relink them once.",
             "Move");
@@ -869,6 +910,38 @@ public sealed class AppModel : ObservableObject, IDisposable
         return true;
     }
 
+    /// <summary>Settings › Videos: a separate projects folder for videos. New projects put their videos there.</summary>
+    private void ChangeVideosFolder()
+    {
+        var folder = _dialogs.PickFolder("Choose a folder for videos. Videos of new projects go here, in the same folder structure as the photos.",
+            Settings.SeparateVideosFolder ?? Settings.ProjectsFolder);
+        if (folder is null) return;
+        Settings.VideosFolder = PathUtil.AreSame(folder, Settings.ProjectsFolder) ? "" : folder;
+        if (Settings.SeparateVideosFolder is { } videos) Library.Library(videos);
+    }
+
+    /// <summary>
+    /// Import panel › "New project in a folder…": asks for a folder. The folder of a project Notch knows adds the day to
+    /// that project; any other folder gets the new project's folder inside it.
+    /// </summary>
+    private void ChooseProjectFolder(ImportDraftViewModel draft, ShootDay day)
+    {
+        string? folder;
+        PanelDialogOpen?.Invoke(true);
+        try
+        {
+            folder = _dialogs.PickFolder("New project in a folder (or choose a project's own folder to add to it)", Settings.ProjectsFolder);
+        }
+        finally
+        {
+            PanelDialogOpen?.Invoke(false);
+        }
+        if (folder is null) return;
+        Library.RefreshLocations();
+        if (Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
+        else draft.SetChoice(day, DayChoice.NewProjectIn(PathUtil.Normalize(folder)));
+    }
+
     private void ChangeProjectsFolder()
     {
         var folder = _dialogs.PickFolder("Choose the projects folder. Year folders (2026, 2027, …) with your projects inside are created here.",
@@ -975,7 +1048,7 @@ public sealed class AppModel : ObservableObject, IDisposable
             new() { Name = "Product Shoot", StartDay = new ShootDay(2026, 10, 14), RootPath = Settings.ProjectsFolder },
             new() { Name = "Portraits Maja", StartDay = new ShootDay(2026, 10, 9), RootPath = "" },
         };
-        var draft = new ImportDraftViewModel(volume, analysis, recent, names, _ => { }, _ => { });
+        var draft = new ImportDraftViewModel(volume, analysis, recent, names, _ => { }, _ => { }, (_, _) => { });
         draft.Days[0].ProjectName = "Ana Wedding";
         _drafts.Add(draft);
         _drafts.Add(draft);

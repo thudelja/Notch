@@ -300,14 +300,20 @@ final class AppModel: ObservableObject {
     func startImport(_ draft: ImportDraft) {
         guard draft.isReady else { return }
         library.refreshLocations()
-        guard let projects = draft.resolvedProjects(store: library, root: settings.destinationURL) else {
+        guard let projects = draft.resolvedProjects(store: library, root: settings.destinationURL, videosRoot: settings.videosURL) else {
+            let folders = settings.abbreviatedVideos.map { "\(settings.abbreviatedDestination) or \($0)" } ?? settings.abbreviatedDestination
             showAlert(
                 "The projects folder isn’t available",
-                "\(settings.abbreviatedDestination) can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings."
+                "\(folders) can’t be used. If it’s on an external drive, connect it, or choose another folder in Settings."
             )
             return
         }
-        if let offline = projects.values.first(where: { $0.rootPath.isEmpty }) {
+        // Each file needs its folder's drive: the photos' or the videos'.
+        let offline = draft.analysis.items.lazy.compactMap { item -> ProjectInfo? in
+            guard let project = projects[item.day] else { return nil }
+            return (item.kind == .photo ? project.rootPath : project.videoRoot).isEmpty ? project : nil
+        }.first
+        if let offline {
             showAlert("Connect the drive", "“\(offline.name)” is on a drive that isn’t connected. Connect it and click Import again.")
             return
         }
@@ -604,6 +610,52 @@ final class AppModel: ObservableObject {
         refreshConnectedVolumes()
     }
 
+    /// Settings › Videos: a separate projects folder for videos. New projects put their videos there.
+    func chooseVideosFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose a Folder for Videos"
+        panel.message = "Videos of new projects go here, in the same folder structure as the photos."
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = settings.videosURL ?? settings.destinationURL
+        AppActivation.bringToFront()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        settings.videosPath = url.standardizedFileURL.path == settings.destinationURL.standardizedFileURL.path ? "" : url.path
+        if let videos = settings.videosURL {
+            library.library(at: videos)
+        }
+    }
+
+    /// Settings › Videos › Same as Photos.
+    func keepVideosWithPhotos() {
+        settings.videosPath = ""
+    }
+
+    /// Import panel › "New project in a folder…": asks for a folder. The folder of a project Notch
+    /// knows adds the day to that project; any other folder gets the new project's folder inside it.
+    func chooseProjectFolder(for day: ShootDay, in draft: ImportDraft) {
+        let panel = NSOpenPanel()
+        panel.title = "New Project in a Folder"
+        panel.message = "Notch makes the project’s folder (date and name) inside the folder you choose. Choose a project’s own folder to add \(day.folderDate) to it."
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = settings.destinationURL
+        AppActivation.bringToFront()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        library.refreshLocations()
+        if let project = library.project(atFolder: url) {
+            draft.useProject(project, for: day)
+        } else {
+            draft.setChoice(.newProjectIn(url.standardizedFileURL), for: day)
+        }
+    }
+
     func forgetImportedFiles() {
         let alert = NSAlert()
         alert.messageText = "Forget which files were imported?"
@@ -643,8 +695,18 @@ final class AppModel: ObservableObject {
     // MARK: - Moving a year to another drive
 
     /// Year folders in the projects folder that can be moved.
-    func availableYears() -> [Int] {
-        YearMigrator.years(in: settings.destinationURL)
+    /// The folder years are moved from: the projects folder, or the separate videos folder.
+    enum YearSource: Hashable {
+        case photos
+        case videos
+    }
+
+    func yearsRoot(_ source: YearSource) -> URL {
+        source == .videos ? settings.videosURL ?? settings.destinationURL : settings.destinationURL
+    }
+
+    func availableYears(in source: YearSource = .photos) -> [Int] {
+        YearMigrator.years(in: yearsRoot(source))
     }
 
     // MARK: - Folder structure
@@ -669,8 +731,9 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    /// Asks where to move `year`, confirms, then moves it in the background.
-    func moveYear(_ year: Int) {
+    /// Asks where to move `year` (from the photos or the videos folder), confirms, then moves it in
+    /// the background.
+    func moveYear(_ year: Int, from source: YearSource = .photos) {
         guard migration == nil else { return }
         let yearText = String(year)
         guard active == nil, importQueue.isEmpty else {
@@ -690,7 +753,7 @@ final class AppModel: ObservableObject {
         AppActivation.bringToFront()
         guard panel.runModal() == .OK, let destinationRoot = panel.url else { return }
 
-        let sourceRoot = settings.destinationURL
+        let sourceRoot = yearsRoot(source)
         if destinationRoot.standardizedFileURL.path == sourceRoot.standardizedFileURL.path {
             showAlert("Choose another folder", "\(yearText) is already in that folder. Pick a folder on the other drive.")
             return
@@ -699,11 +762,12 @@ final class AppModel: ObservableObject {
         let driveName = (try? destinationRoot.resourceValues(forKeys: [.volumeLocalizedNameKey]))?.volumeLocalizedName
             ?? destinationRoot.lastPathComponent
         let target = (destinationRoot.appendingPathComponent(yearText).path as NSString).abbreviatingWithTildeInPath
+        let origin = (sourceRoot.appendingPathComponent(yearText).path as NSString).abbreviatingWithTildeInPath
         let confirm = NSAlert()
         confirm.alertStyle = .warning
         confirm.messageText = "Move \(yearText) to “\(driveName)”?"
         confirm.informativeText = """
-        Everything in \(yearText), including photos, videos and editing projects, is copied to \(target). \
+        Everything in \(origin), including photos, videos and editing projects, is copied to \(target). \
         Each file is checked against the original and then deleted from this Mac.
 
         Projects from \(yearText) will open from “\(driveName)” from now on. New projects still go to this Mac. \

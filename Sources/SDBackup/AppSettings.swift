@@ -28,6 +28,7 @@ enum CardDetection: String, CaseIterable, Identifiable {
 final class AppSettings: ObservableObject {
     private enum Key {
         static let destination = "destinationPath"
+        static let videos = "videosPath"
         static let autoBackup = "autoBackupEnabled"
         static let detection = "cardDetection"
         static let verify = "verifyCopies"
@@ -41,6 +42,10 @@ final class AppSettings: ObservableObject {
 
     @Published var destinationPath: String {
         didSet { defaults.set(destinationPath, forKey: Key.destination) }
+    }
+    /// A separate projects folder for videos, or "" to keep them with the photos.
+    @Published var videosPath: String {
+        didSet { defaults.set(videosPath, forKey: Key.videos) }
     }
     @Published var autoBackupEnabled: Bool {
         didSet { defaults.set(autoBackupEnabled, forKey: Key.autoBackup) }
@@ -77,6 +82,7 @@ final class AppSettings: ObservableObject {
 
         self.defaults = defaults
         destinationPath = defaults.string(forKey: Key.destination) ?? defaultDestination
+        videosPath = defaults.string(forKey: Key.videos) ?? ""
         autoBackupEnabled = defaults.bool(forKey: Key.autoBackup)
         detection = CardDetection(rawValue: defaults.string(forKey: Key.detection) ?? "") ?? .memoryCards
         verifyCopies = defaults.bool(forKey: Key.verify)
@@ -97,5 +103,16 @@ final class AppSettings: ObservableObject {
 
     var abbreviatedDestination: String {
         (destinationURL.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// The separate projects folder for videos, or nil when videos go with the photos.
+    var videosURL: URL? {
+        guard !videosPath.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: (videosPath as NSString).expandingTildeInPath, isDirectory: true)
+        return url.standardizedFileURL.path == destinationURL.standardizedFileURL.path ? nil : url
+    }
+
+    var abbreviatedVideos: String? {
+        videosURL.map { ($0.path as NSString).abbreviatingWithTildeInPath }
     }
 }

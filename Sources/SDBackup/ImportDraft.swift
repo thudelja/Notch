@@ -4,11 +4,24 @@ import SDBackupCore
 /// What the user picked for one shoot day.
 enum DayChoice: Hashable {
     case unassigned
+    /// A new project in the projects folder.
     case newProject
+    /// A new project in a folder the user chose: its dated folder is made inside it.
+    case newProjectIn(URL)
     /// The same new project as the given (earlier or later) day.
     case sameAs(ShootDay)
     case existing(UUID)
+    /// "New project in a folder…": asks for the folder. Never stays selected.
+    case chooseFolder
     case skip
+
+    /// A new project, in the projects folder or in a chosen folder.
+    var isNewProject: Bool {
+        switch self {
+        case .newProject, .newProjectIn: return true
+        default: return false
+        }
+    }
 }
 
 struct ChoiceOption: Hashable, Identifiable {
@@ -32,6 +45,8 @@ final class ImportDraft: ObservableObject, Identifiable {
     let totalBytes: Int64
 
     @Published private(set) var choices: [ShootDay: DayChoice] = [:]
+    /// Existing projects picked by choosing their folder, beyond the recent ones.
+    @Published private(set) var chosenProjects: [ProjectInfo] = []
     @Published var projectNames: [ShootDay: String] = [:]
     @Published var cameraNames: [String: String]
 
@@ -69,25 +84,40 @@ final class ImportDraft: ObservableObject, Identifiable {
     }
 
     func setChoice(_ choice: DayChoice, for day: ShootDay) {
+        guard choice != .chooseFolder else { return }
         let previous = choices[day]
         choices[day] = choice
         // Days that pointed at this day's new project need a new answer.
-        if previous == .newProject, choice != .newProject {
+        if previous?.isNewProject == true, !choice.isNewProject {
             for (other, value) in choices where value == .sameAs(day) {
                 choices[other] = .unassigned
             }
         }
     }
 
+    /// The user chose the folder of an existing project for this day.
+    func useProject(_ project: ProjectInfo, for day: ShootDay) {
+        if !knownProjects.contains(where: { $0.id == project.id }) {
+            chosenProjects.append(project)
+        }
+        setChoice(.existing(project.id), for: day)
+    }
+
+    private var knownProjects: [ProjectInfo] { recentProjects + chosenProjects }
+
     func options(for day: ShootDay) -> [ChoiceOption] {
         var options = [
             ChoiceOption(choice: .unassigned, title: "Choose a project…"),
             ChoiceOption(choice: .newProject, title: "New project"),
         ]
-        for summary in days where summary.day != day && choice(for: summary.day) == .newProject {
+        if case .newProjectIn(let folder) = choice(for: day) {
+            options.append(ChoiceOption(choice: .newProjectIn(folder), title: "New project in “\(folder.lastPathComponent)”"))
+        }
+        options.append(ChoiceOption(choice: .chooseFolder, title: "New project in a folder…"))
+        for summary in days where summary.day != day && choice(for: summary.day).isNewProject {
             options.append(ChoiceOption(choice: .sameAs(summary.day), title: "Same as \(newProjectTitle(summary.day))"))
         }
-        for project in recentProjects {
+        for project in knownProjects {
             let missing = isOnConnectedDrive(project) ? "" : " (drive not connected)"
             options.append(ChoiceOption(choice: .existing(project.id), title: "\(project.name) · \(project.startDay.folderDate)\(missing)"))
         }
@@ -113,20 +143,20 @@ final class ImportDraft: ObservableObject, Identifiable {
         var importsSomething = false
         for summary in days {
             switch choice(for: summary.day) {
-            case .unassigned:
+            case .unassigned, .chooseFolder:
                 return "Choose a project for \(summary.day.folderDate)."
             case .skip:
                 continue
-            case .newProject:
+            case .newProject, .newProjectIn:
                 if trimmedName(summary.day).isEmpty {
                     return "Type a name for the new project (\(summary.day.folderDate))."
                 }
             case .sameAs(let owner):
-                if choice(for: owner) != .newProject || trimmedName(owner).isEmpty {
+                if !choice(for: owner).isNewProject || trimmedName(owner).isEmpty {
                     return "Type a name for the new project (\(owner.folderDate))."
                 }
             case .existing(let id):
-                if let project = recentProjects.first(where: { $0.id == id }), !isOnConnectedDrive(project) {
+                if let project = knownProjects.first(where: { $0.id == id }), !isAvailable(project, for: summary) {
                     return "“\(project.name)” is on a drive that isn’t connected. Connect it or choose another project."
                 }
             }
@@ -138,14 +168,14 @@ final class ImportDraft: ObservableObject, Identifiable {
     // MARK: - Result
 
     /// The project for every day that isn't skipped. A new project starts on the earliest day
-    /// assigned to it and is created in the projects folder at `root`. Nil when that folder
-    /// isn't available.
-    func resolvedProjects(store: LibraryStore, root: URL) -> [ShootDay: ProjectInfo]? {
+    /// assigned to it and is created in the projects folder at `root` (videos in `videosRoot`, when
+    /// separate) or in the folder chosen for it. Nil when a folder isn't available.
+    func resolvedProjects(store: LibraryStore, root: URL, videosRoot: URL?) -> [ShootDay: ProjectInfo]? {
         var result: [ShootDay: ProjectInfo] = [:]
         var newProjectDays: [ShootDay: [ShootDay]] = [:]
         for summary in days {
             switch choice(for: summary.day) {
-            case .newProject:
+            case .newProject, .newProjectIn:
                 newProjectDays[summary.day, default: []].append(summary.day)
             case .sameAs(let owner):
                 newProjectDays[owner, default: []].append(summary.day)
@@ -153,13 +183,22 @@ final class ImportDraft: ObservableObject, Identifiable {
                 if let project = store.project(id: id) {
                     result[summary.day] = project
                 }
-            case .unassigned, .skip:
+            case .unassigned, .chooseFolder, .skip:
                 break
             }
         }
         for (owner, members) in newProjectDays {
-            guard choice(for: owner) == .newProject, let start = members.min() else { continue }
-            guard let project = store.projectNamed(trimmedName(owner), startDay: start, in: root) else { return nil }
+            guard let start = members.min() else { continue }
+            let project: ProjectInfo?
+            switch choice(for: owner) {
+            case .newProject:
+                project = store.projectNamed(trimmedName(owner), startDay: start, in: root, videosRoot: videosRoot)
+            case .newProjectIn(let folder):
+                project = store.projectNamed(trimmedName(owner), startDay: start, inFolder: folder, structure: store.structure(at: root))
+            default:
+                continue
+            }
+            guard let project else { return nil }
             for day in members {
                 result[day] = project
             }
@@ -169,7 +208,17 @@ final class ImportDraft: ObservableObject, Identifiable {
 
     /// Projects moved to an external drive are only available while it is connected.
     private func isOnConnectedDrive(_ project: ProjectInfo) -> Bool {
-        !project.rootPath.isEmpty && FileManager.default.fileExists(atPath: project.rootPath)
+        Self.exists(project.rootPath) && (!project.hasSeparateVideoFolder || Self.exists(project.videoRoot))
+    }
+
+    /// Whether the folders this day's files go to are connected: the photos' and the videos'.
+    private func isAvailable(_ project: ProjectInfo, for summary: DaySummary) -> Bool {
+        (summary.photos == 0 || Self.exists(project.rootPath))
+            && (summary.videos + summary.audio == 0 || Self.exists(project.videoRoot))
+    }
+
+    private static func exists(_ path: String) -> Bool {
+        !path.isEmpty && FileManager.default.fileExists(atPath: path)
     }
 
     func cameraName(for item: MediaItem) -> String {

@@ -118,7 +118,12 @@ public sealed class LibraryStore
         }
         for (var i = 0; i < _projects.Count; i++)
         {
-            _projects[i] = _projects[i] with { RootPath = roots.GetValueOrDefault(_projects[i].LibraryId) ?? "" };
+            var project = _projects[i];
+            _projects[i] = project with
+            {
+                RootPath = roots.GetValueOrDefault(project.LibraryId) ?? "",
+                VideoRootPath = project.VideoLibraryId is Guid videos ? roots.GetValueOrDefault(videos) ?? "" : "",
+            };
         }
     }
 
@@ -176,23 +181,75 @@ public sealed class LibraryStore
 
     // ------------------------------------------------------------------ Projects
 
-    public IReadOnlyList<ProjectInfo> RecentProjects(int limit = 3) =>
+    public IReadOnlyList<ProjectInfo> RecentProjects(int limit = 2) =>
         _projects.OrderByDescending(p => p.LastUsed).Take(limit).ToList();
 
     public ProjectInfo? Project(Guid id) => _projects.FirstOrDefault(p => p.Id == id);
 
-    /// <summary>The existing project with this name and start day in the folder at <paramref name="root"/>, or a new one there.</summary>
-    public ProjectInfo? ProjectNamed(string name, ShootDay startDay, string root)
+    /// <summary>
+    /// The existing project with this name and start day in the folder at <paramref name="root"/>, or a new one there,
+    /// with its videos in <paramref name="videosRoot"/> when that is a separate folder. Null when a folder isn't available.
+    /// </summary>
+    public ProjectInfo? ProjectNamed(string name, ShootDay startDay, string root, string? videosRoot = null)
     {
         if (Library(root) is not Guid libraryId) return null;
         var trimmed = name.Trim();
         var rootPath = PathUtil.Normalize(root);
         var existing = _projects.FirstOrDefault(p =>
-            p.LibraryId == libraryId && p.StartDay == startDay && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            p.LibraryId == libraryId && p.Folder is null && p.StartDay == startDay && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing with { RootPath = rootPath };
+
+        Guid? videoLibraryId = null;
+        var videoRootPath = "";
+        if (videosRoot is not null && !PathUtil.AreSame(videosRoot, rootPath))
+        {
+            // A videos folder on a drive that isn't connected is still recorded; its videos wait for it.
+            var path = PathUtil.Normalize(videosRoot);
+            videoLibraryId = Library(path) ?? _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, path))?.LibraryId;
+            if (videoLibraryId is null) return null;
+            videoRootPath = Directory.Exists(path) ? path : "";
+        }
         // A new project follows the folder's current structure, and keeps it from then on.
         var structure = LibraryManifest.Read(rootPath)?.Structure;
-        return new ProjectInfo { Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = rootPath, Structure = structure };
+        return new ProjectInfo
+        {
+            Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = rootPath, Structure = structure,
+            VideoLibraryId = videoLibraryId, VideoRootPath = videoRootPath,
+        };
+    }
+
+    /// <summary>
+    /// A project in <paramref name="parent"/>, a folder the user chose: its folder is <c>parent\&lt;date and name&gt;</c>,
+    /// named by <paramref name="structure"/>, and both photos and videos go into it. The project belongs to the nearest
+    /// projects folder at or above <paramref name="parent"/> (so it moves with its year and is found again on the Mac);
+    /// a folder outside every projects folder becomes one. Null when it can't be written.
+    /// </summary>
+    public ProjectInfo? ProjectNamed(string name, ShootDay startDay, string parent, FolderStructure structure)
+    {
+        parent = PathUtil.Normalize(parent);
+        var root = ProjectsFolderContaining(parent) ?? (Library(parent) is null ? null : parent);
+        if (root is null || Library(root) is not Guid libraryId) return null;
+        var trimmed = name.Trim();
+        var relative = Path.GetRelativePath(root, parent);
+        string[] below = relative == "." ? [] : relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+        IReadOnlyList<string> folder = [.. below, structure.ProjectFolderNameFor(trimmed, startDay)];
+        var existing = _projects.FirstOrDefault(p => p.LibraryId == libraryId && p.Folder is { } f && f.SequenceEqual(folder, PathUtil.Comparer));
+        if (existing is not null) return existing with { RootPath = root };
+        return new ProjectInfo { Name = trimmed, StartDay = startDay, LibraryId = libraryId, RootPath = root, Structure = structure, Folder = folder };
+    }
+
+    /// <summary>The known project whose folder is <paramref name="folder"/> (its photo or video project folder, or the folder it was created in).</summary>
+    public ProjectInfo? ProjectAtFolder(string folder) =>
+        _projects.FirstOrDefault(p => p.RootPath.Length > 0 && ProjectLayout.ProjectFolders(p).Any(f => PathUtil.AreSame(f, folder)));
+
+    /// <summary>The nearest folder at or above <paramref name="folder"/> that is a projects folder (has a library.json).</summary>
+    private static string? ProjectsFolderContaining(string folder)
+    {
+        for (var current = folder; !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
+        {
+            if (LibraryManifest.Read(current) is not null) return current;
+        }
+        return null;
     }
 
     /// <summary>Saves new projects and moves these to the top of the recent list.</summary>
@@ -210,29 +267,57 @@ public sealed class LibraryStore
         }
         SaveCache();
         foreach (var project in list.Where(p => p.RootPath.Length > 0)) WriteManifest(project.LibraryId, project.RootPath);
+        foreach (var project in list.Where(p => p.HasSeparateVideoFolder && p.VideoRootPath.Length > 0)) WriteManifest(project.VideoLibrary, project.VideoRootPath);
     }
 
-    /// <summary>After a year was moved: its projects now belong to the projects folder at <paramref name="newRoot"/>.</summary>
+    /// <summary>
+    /// After a year folder was moved from <paramref name="oldRoot"/> to <paramref name="newRoot"/>: the projects (or, for
+    /// projects with a separate videos folder, the videos) in it now belong to the projects folder at <paramref name="newRoot"/>.
+    /// </summary>
     public int MoveProjects(int year, string oldRoot, string newRoot)
     {
         var oldId = LibraryManifest.Read(oldRoot)?.LibraryId
             ?? _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, oldRoot))?.LibraryId;
         if (oldId is null || Library(newRoot) is not Guid newId) return 0;
 
-        var changed = 0;
+        var yearText = year.ToString("0000", System.Globalization.CultureInfo.InvariantCulture);
+        var newPath = PathUtil.Normalize(newRoot);
+        var changed = new List<ProjectInfo>();
         for (var i = 0; i < _projects.Count; i++)
         {
-            if (_projects[i].LibraryId != oldId || _projects[i].StartDay.Year != year) continue;
-            _projects[i] = _projects[i] with { LibraryId = newId, RootPath = PathUtil.Normalize(newRoot) };
-            changed++;
+            var project = _projects[i];
+            var moved = false;
+            if (project.LibraryId == oldId && ProjectLayout.RelativePhotoFolder(project).FirstOrDefault() == yearText)
+            {
+                project = project with { LibraryId = newId, RootPath = newPath };
+                moved = true;
+            }
+            if (project.HasSeparateVideoFolder && project.VideoLibraryId == oldId && ProjectLayout.RelativeVideoFolder(project).FirstOrDefault() == yearText)
+            {
+                project = project with { VideoLibraryId = newId, VideoRootPath = newPath };
+                moved = true;
+            }
+            if (!moved) continue;
+            if (project.VideoLibraryId is null) project = project with { VideoRootPath = "" };
+            _projects[i] = project;
+            changed.Add(project);
         }
-        if (changed > 0)
+        if (changed.Count > 0)
         {
             SaveCache();
             WriteManifest(oldId.Value, oldRoot);
             WriteManifest(newId, newRoot);
+            // The other folder each project lives in lists it too.
+            foreach (var project in changed)
+            {
+                if (project.RootPath.Length > 0 && project.LibraryId != newId) WriteManifest(project.LibraryId, project.RootPath);
+                if (project.HasSeparateVideoFolder && project.VideoRootPath.Length > 0 && project.VideoLibrary != newId)
+                {
+                    WriteManifest(project.VideoLibrary, project.VideoRootPath);
+                }
+            }
         }
-        return changed;
+        return changed.Count;
     }
 
     // ------------------------------------------------------------------ Camera names
@@ -291,7 +376,11 @@ public sealed class LibraryStore
         var changed = false;
         foreach (var project in manifest.Projects)
         {
-            var incoming = project with { LibraryId = manifest.LibraryId, RootPath = root };
+            var known = _projects.FirstOrDefault(p => p.Id == project.Id);
+            // A videos folder lists the projects whose videos it holds; they belong to another folder.
+            var incoming = project.HasSeparateVideoFolder && project.VideoLibraryId == manifest.LibraryId
+                ? project with { VideoRootPath = root, RootPath = known?.RootPath ?? "" }
+                : project with { LibraryId = manifest.LibraryId, RootPath = root, VideoRootPath = known?.VideoRootPath ?? "" };
             var index = _projects.FindIndex(p => p.Id == incoming.Id);
             if (index < 0)
             {
@@ -312,6 +401,7 @@ public sealed class LibraryStore
         for (var i = 0; i < _projects.Count; i++)
         {
             if (_projects[i].LibraryId == libraryId) _projects[i] = _projects[i] with { RootPath = root };
+            if (_projects[i].VideoLibraryId == libraryId) _projects[i] = _projects[i] with { VideoRootPath = root };
         }
     }
 
@@ -322,7 +412,8 @@ public sealed class LibraryStore
     private void WriteManifest(Guid libraryId, string root)
     {
         var existing = LibraryManifest.Read(root);
-        var updated = LibraryManifest.Create(libraryId, _projects.Where(p => p.LibraryId == libraryId), existing?.Structure);
+        var updated = LibraryManifest.Create(libraryId,
+            _projects.Where(p => p.LibraryId == libraryId || (p.HasSeparateVideoFolder && p.VideoLibraryId == libraryId)), existing?.Structure);
         if (existing is not null && (existing.LibraryId != libraryId || existing.Serialized() == updated.Serialized())) return;
         try { updated.Write(root); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }

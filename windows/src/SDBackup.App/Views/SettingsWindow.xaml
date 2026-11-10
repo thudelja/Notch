@@ -23,12 +23,28 @@
                 <StackPanel>
                     <DockPanel>
                         <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Change…" Margin="12,0,0,0"
-                                Command="{Binding ChangeProjectsFolderCommand}" />
-                        <TextBlock Style="{StaticResource IconText}" Text="&#xE8B7;" Margin="0,0,10,0"
+                                AutomationProperties.Name="Change the photos folder" Command="{Binding ChangeProjectsFolderCommand}" />
+                        <TextBlock Style="{StaticResource IconText}" Text="&#xE91B;" Margin="0,0,10,0" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="Photos" Width="56" VerticalAlignment="Center" />
                         <TextBlock Style="{StaticResource BodyText}" VerticalAlignment="Center" TextWrapping="NoWrap"
                                    TextTrimming="CharacterEllipsis" Text="{Binding Settings.ProjectsFolder}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    ToolTip="{Binding Settings.ProjectsFolder}" />
+                    </DockPanel>
+                    <DockPanel Margin="0,8,0,0">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Change…" Margin="8,0,0,0"
+                                AutomationProperties.Name="Change the videos folder" Command="{Binding ChangeVideosFolderCommand}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Same as photos" Margin="12,0,0,0"
+                                Visibility="{Binding Settings.HasSeparateVideosFolder, Converter={StaticResource BoolToVisible}}"
+                                Command="{Binding KeepVideosWithPhotosCommand}" />
+                        <TextBlock Style="{StaticResource IconText}" Text="&#xE714;" Margin="0,0,10,0" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Style="{StaticResource BodyText}" Text="Videos" Width="56" VerticalAlignment="Center" />
+                        <TextBlock Style="{StaticResource BodyText}" VerticalAlignment="Center" TextWrapping="NoWrap"
+                                   TextTrimming="CharacterEllipsis" Text="{Binding Settings.VideosFolderText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   ToolTip="{Binding Settings.VideosFolderText}" />
                     </DockPanel>
                     <DockPanel Margin="0,10,0,0">
                         <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="Folder structure…" Margin="12,0,0,0"
@@ -57,7 +73,20 @@
                     </StackPanel>
 
                     <StackPanel Visibility="{Binding IsMigrating, Converter={StaticResource BoolToCollapsed}}">
-                        <TextBlock Style="{StaticResource CaptionText}" Text="There are no year folders in the projects folder yet."
+                        <DockPanel Margin="0,0,0,10" Visibility="{Binding Settings.HasSeparateVideosFolder, Converter={StaticResource BoolToVisible}}">
+                            <TextBlock Style="{StaticResource BodyText}" Text="From" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <ComboBox Style="{StaticResource PickerBox}" Width="160" HorizontalAlignment="Left" MinHeight="32"
+                                      AutomationProperties.Name="Move a year from"
+                                      ItemsSource="{Binding YearSourceChoices}" SelectedValuePath="Value"
+                                      SelectedValue="{Binding YearsFromVideos, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Title}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </DockPanel>
+                        <TextBlock Style="{StaticResource CaptionText}" Text="{Binding NoYearsText}"
                                    Visibility="{Binding HasYears, Converter={StaticResource BoolToCollapsed}}" />
                         <DockPanel Visibility="{Binding HasYears, Converter={StaticResource BoolToVisible}}">
                             <Button DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Move to drive…"

@@ -50,6 +50,8 @@ internal static class SelfTest
                 // Exercise the import panel: pick another option, rename the project, edit a camera name.
                 var draft = model.CurrentDraft ?? throw new InvalidOperationException("The sample state has no import draft.");
                 draft.Days[1].Choice = draft.Days[1].Options.Last().Choice;
+                // A new project in a folder the user chose ("New project in a folder…").
+                draft.SetChoice(draft.Days[0].Day, DayChoice.NewProjectIn(Path.Combine(model.Settings.ProjectsFolder, "2026", "AMD Koledar 2026")));
                 draft.Days[0].ProjectName = "Ana & Jan Wedding";
                 draft.Cameras[0].Name = "R5 II";
                 Settle();
@@ -79,11 +81,16 @@ internal static class SelfTest
                 }
 
                 model.Settings.PhotoApp = PhotoApp.LightroomClassic;
+                model.Settings.VideosFolder = Path.Combine(Path.GetTempPath(), "Notch self-test videos");
                 var settings = new SettingsWindow { DataContext = model };
                 settings.Show();
                 Settle();
                 Save(settings, Path.Combine(folder, $"settings-{theme}.png"));
-                report.Add($"Settings ({theme}): {settings.ActualWidth:0}×{settings.ActualHeight:0}");
+                report.Add($"Settings ({theme}): {settings.ActualWidth:0}×{settings.ActualHeight:0}, {model.VersionText}");
+                if (Descendants<TextBlock>(settings).All(text => text.Text != model.VersionText))
+                {
+                    throw new InvalidOperationException("Settings doesn't show the version.");
+                }
                 // The lower sections (After importing, General, Memory) are below the fold.
                 if (Descendants<ScrollViewer>(settings).FirstOrDefault() is { ScrollableHeight: > 0 } settingsScroller)
                 {
