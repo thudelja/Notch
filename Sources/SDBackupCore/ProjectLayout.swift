@@ -14,17 +14,26 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     /// The projects folder this project lives in (its `.sdbackup/library.json` ID).
     public var libraryID: UUID
     public var lastUsed: Date
-    /// The folder structure the project was created with, or nil for the standard one (all projects
-    /// made before structures could be changed). Kept with the project so changing the projects
-    /// folder's structure never moves existing projects.
+    /// The folder structure the project's photos follow, as it was when the project was created,
+    /// or nil for the standard one (all projects made before structures could be changed). Kept
+    /// with the project so changing the projects folder's structure never moves existing projects.
     public var structure: FolderStructure?
-    /// For a project created in a folder the user chose: the project folder's path below its
-    /// projects folder, e.g. ["2026", "AMD Koledar 2026", "02.11.2026 Ana"]. Photos and videos both
-    /// go into it. Nil for projects laid out by the structure.
+    /// For photos put in a folder the user chose: the project folder's path below its projects
+    /// folder, e.g. ["2026", "Clients", "02.11.2026 Ana"]. Nil for photos laid out by the structure.
+    /// (Projects made before 1.3 put their videos there too.)
     public var folder: [String]?
-    /// The projects folder holding this project's videos, when videos go to a separate folder.
-    /// Nil: the same as `libraryID`.
+    /// The projects folder holding this project's videos, when they go to another folder than the
+    /// photos. Nil: the same as `libraryID`.
     public var videoLibraryID: UUID?
+    /// The structure the project's videos follow. Set on every project made since 1.3; nil for older
+    /// projects, whose videos follow `structure` (and `folder`) as before.
+    public var videoStructure: FolderStructure?
+    /// For videos put in a folder the user chose: the project folder's path below the videos'
+    /// projects folder.
+    public var videoFolder: [String]?
+    /// The multi-day shoot (e.g. "AMD Koledar 2026") the project belongs to: its folder takes the
+    /// project folder's place in the structures, and the project folder goes inside it.
+    public var series: String?
     /// Where that projects folder is on this computer right now, or "" when its drive isn't
     /// connected. Filled in when loading; never saved.
     public var rootPath: String = ""
@@ -33,7 +42,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     public var videoRootPath: String = ""
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, startDay, libraryID, lastUsed, structure, folder, videoLibraryID
+        case id, name, startDay, libraryID, lastUsed, structure, folder, videoLibraryID, videoStructure, videoFolder, series
     }
 
     public init(
@@ -44,6 +53,9 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         structure: FolderStructure? = nil,
         folder: [String]? = nil,
         videoLibraryID: UUID? = nil,
+        videoStructure: FolderStructure? = nil,
+        videoFolder: [String]? = nil,
+        series: String? = nil,
         rootPath: String = "",
         videoRootPath: String = "",
         lastUsed: Date = Date()
@@ -55,6 +67,10 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         self.structure = structure == FolderStructure.standard ? nil : structure
         self.folder = folder?.isEmpty == true ? nil : folder
         self.videoLibraryID = videoLibraryID == libraryID ? nil : videoLibraryID
+        self.videoStructure = videoStructure
+        self.videoFolder = videoFolder?.isEmpty == true ? nil : videoFolder
+        let trimmedSeries = series?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.series = trimmedSeries.isEmpty ? nil : trimmedSeries
         self.rootPath = rootPath
         self.videoRootPath = videoRootPath
         self.lastUsed = lastUsed
@@ -73,19 +89,45 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         let folder = (try? container.decodeIfPresent([String].self, forKey: .folder)) ?? nil
         self.folder = folder?.isEmpty == true ? nil : folder
         videoLibraryID = (try? container.decodeIfPresent(UUID.self, forKey: .videoLibraryID)) ?? nil
+        // A video structure this version can't read is read as the standard one; the project stays a
+        // 1.3 one (whose videos don't follow the photos' structure).
+        if container.contains(.videoStructure) {
+            let decoded = (try? container.decodeIfPresent(FolderStructure.self, forKey: .videoStructure)) ?? nil
+            videoStructure = decoded?.isValid == true ? decoded : FolderStructure.standard
+        } else {
+            videoStructure = nil
+        }
+        let videoFolder = (try? container.decodeIfPresent([String].self, forKey: .videoFolder)) ?? nil
+        self.videoFolder = videoFolder?.isEmpty == true ? nil : videoFolder
+        let series = ((try? container.decodeIfPresent(String.self, forKey: .series)) ?? nil)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.series = series?.isEmpty == true ? nil : series
     }
 
-    /// The structure the project's folders follow.
+    /// The structure the project's photos follow.
     public var layout: FolderStructure {
         if let structure, structure.isValid { return structure }
         return .standard
     }
 
+    /// The structure the project's videos follow.
+    public var videoLayout: FolderStructure {
+        if let videoStructure, videoStructure.isValid { return videoStructure }
+        return layout
+    }
+
+    /// Made before 1.3: the videos follow the photos' structure and chosen folder.
+    var hasLegacyVideoLayout: Bool { videoStructure == nil }
+
     /// "02.11.2026 Ana Wedding"
     public var folderName: String { folder?.last ?? layout.projectFolderName(name: name, startDay: startDay) }
 
     /// Videos go to another projects folder than photos.
-    public var hasSeparateVideoFolder: Bool { videoLibraryID != nil && folder == nil }
+    public var hasSeparateVideoFolder: Bool {
+        guard videoLibraryID != nil else { return false }
+        // Before 1.3, a project in a chosen folder kept its videos there.
+        return !(hasLegacyVideoLayout && folder != nil)
+    }
 
     /// The ID of the projects folder holding the videos.
     public var videoLibrary: UUID { hasSeparateVideoFolder ? videoLibraryID ?? libraryID : libraryID }
@@ -132,44 +174,79 @@ public enum ProjectLayout {
         FolderStructure.projectFolderName(name: name, startDay: startDay)
     }
 
+    /// Where one kind of a project's files goes: the projects folder, the structure, and paths
+    /// below that folder.
+    struct Placement {
+        let root: String
+        let layout: FolderStructure
+        /// The folder holding the camera folders (photos) or the video folders (videos).
+        let files: [String]
+        /// The empty Exported folder, with an Unedited / Exported split.
+        let exported: [String]?
+        /// The project folder itself.
+        let projectFolder: [String]
+    }
+
+    static func placement(_ branch: FolderStructure.Branch, for project: ProjectInfo) -> Placement {
+        let source: (layout: FolderStructure, chosen: [String]?, root: String)
+        switch branch {
+        case .photo:
+            source = (project.layout, project.folder, project.rootPath)
+        case .video where project.hasLegacyVideoLayout:
+            // Before 1.3, videos followed the photos' structure and chosen folder.
+            source = (project.layout, project.folder, project.videoRoot)
+        case .video:
+            source = (project.videoLayout, project.videoFolder, project.videoRoot)
+        }
+        let (layout, chosen, root) = source
+        if let chosen {
+            return Placement(
+                root: root, layout: layout,
+                files: chosen + layout.insideProjectFiles,
+                exported: layout.insideProjectExported.map { chosen + $0 },
+                projectFolder: chosen
+            )
+        }
+        return Placement(
+            root: root, layout: layout,
+            files: layout.filesPath(branch, name: project.name, startDay: project.startDay, series: project.series),
+            exported: layout.exportedPath(branch, name: project.name, startDay: project.startDay, series: project.series),
+            projectFolder: layout.projectPath(branch, name: project.name, startDay: project.startDay, series: project.series)
+        )
+    }
+
     /// The folder holding the project's photo camera folders.
     public static func photoFolder(for project: ProjectInfo) -> URL {
-        url(project.rootPath, relativePhotoFolder(for: project))
+        let placement = placement(.photo, for: project)
+        return url(placement.root, placement.files)
     }
 
     /// The folder holding the project's video folders (Media, Project, …), in the videos'
     /// projects folder.
     public static func videoFolder(for project: ProjectInfo) -> URL {
-        url(project.videoRoot, relativeVideoFolder(for: project))
+        let placement = placement(.video, for: project)
+        return url(placement.root, placement.files)
     }
 
-    /// The project's folders: the photo and video project folders (one for a project in a chosen
-    /// folder). Used to recognise a project when the user picks its folder.
+    /// The project's folders: the photo and video project folders (one when they're the same).
+    /// Used to recognise a project when the user picks its folder.
     public static func projectFolders(for project: ProjectInfo) -> [URL] {
-        if let folder = project.folder {
-            return [url(project.rootPath, folder)]
-        }
-        let layout = project.layout
-        return [
-            url(project.rootPath, layout.projectPath(.photo, name: project.name, startDay: project.startDay)),
-            url(project.videoRoot, layout.projectPath(.video, name: project.name, startDay: project.startDay)),
-        ]
+        let photo = placement(.photo, for: project)
+        let video = placement(.video, for: project)
+        let folders = [url(photo.root, photo.projectFolder), url(video.root, video.projectFolder)]
+        return folders[0].path == folders[1].path ? [folders[0]] : folders
     }
 
     /// The project's empty Exported folder for photos or videos, if its structure has a split.
     public static func exportedFolder(_ branch: FolderStructure.Branch, for project: ProjectInfo) -> URL? {
-        let layout = project.layout
-        if let folder = project.folder {
-            return layout.insideProjectExported.map { url(project.rootPath, folder + $0) }
-        }
-        guard let exported = layout.exportedPath(branch, name: project.name, startDay: project.startDay) else { return nil }
-        return url(branch == .photo ? project.rootPath : project.videoRoot, exported)
+        let placement = placement(branch, for: project)
+        return placement.exported.map { url(placement.root, $0) }
     }
 
     /// Photos go into the photo project folder; videos and audio into the video project's media
     /// folder. Both get a folder per camera unless the structure turns them off.
     public static func targetDirectory(kind: MediaKind, project: ProjectInfo, camera: String) -> URL {
-        let layout = project.layout
+        let layout = kind == .photo ? project.layout : placement(.video, for: project).layout
         var directory: URL
         switch kind {
         case .photo:
@@ -210,7 +287,7 @@ public enum ProjectLayout {
         }
         var folders: [String: URL] = [:]
         for project in videoProjects.values {
-            for name in project.layout.videoFolders {
+            for name in placement(.video, for: project).layout.videoFolders {
                 let folder = videoFolder(for: project).appendingPathComponent(FolderStructure.safe(name, fallback: "Folder"), isDirectory: true)
                 folders[folder.path] = folder
             }
@@ -229,15 +306,13 @@ public enum ProjectLayout {
     /// The photo folder relative to the projects folder, as path components:
     /// ["2026", "Photo", "11 November", "02.11.2026 Ana Wedding"]. The same on every OS.
     public static func relativePhotoFolder(for project: ProjectInfo) -> [String] {
-        if let folder = project.folder { return folder + project.layout.insideProjectFiles }
-        return project.layout.filesPath(.photo, name: project.name, startDay: project.startDay)
+        placement(.photo, for: project).files
     }
 
     /// ["2026", "Video", "11 November", "02.11.2026 Ana Wedding"], relative to the videos'
     /// projects folder.
     public static func relativeVideoFolder(for project: ProjectInfo) -> [String] {
-        if let folder = project.folder { return folder + project.layout.insideProjectFiles }
-        return project.layout.filesPath(.video, name: project.name, startDay: project.startDay)
+        placement(.video, for: project).files
     }
 
     static func url(_ root: String, _ components: [String]) -> URL {

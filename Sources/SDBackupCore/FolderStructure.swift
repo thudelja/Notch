@@ -186,23 +186,34 @@ public struct FolderStructure: Codable, Hashable, Sendable {
 
     /// Where a project's files go: for photos the folder holding the camera folders, for videos the
     /// folder holding the video folders. Ends in the Unedited folder when the split comes after the
-    /// project folder.
-    public func filesPath(_ branch: Branch, name: String, startDay: ShootDay) -> [String] {
-        components(branch, name: name, startDay: startDay, exported: false)
+    /// project folder. A project of a multi-day shoot (`series`) sits in the shoot's folder, which
+    /// takes the project folder's place: …/AMD Koledar 2026/02.11.2026 Ana.
+    public func filesPath(_ branch: Branch, name: String, startDay: ShootDay, series: String? = nil) -> [String] {
+        components(branch, name: name, startDay: startDay, series: series, exported: false)
     }
 
     /// The empty Exported folder for a project, or nil without a split: the same path as the files
     /// down to the project folder, with the Exported name in place of the Unedited one.
-    public func exportedPath(_ branch: Branch, name: String, startDay: ShootDay) -> [String]? {
-        hasSplit ? components(branch, name: name, startDay: startDay, exported: true) : nil
+    public func exportedPath(_ branch: Branch, name: String, startDay: ShootDay, series: String? = nil) -> [String]? {
+        hasSplit ? components(branch, name: name, startDay: startDay, series: series, exported: true) : nil
     }
 
     /// The path down to and including the project folder (with the Unedited name when the split
     /// is above it).
-    public func projectPath(_ branch: Branch, name: String, startDay: ShootDay) -> [String] {
-        let files = filesPath(branch, name: name, startDay: startDay)
+    public func projectPath(_ branch: Branch, name: String, startDay: ShootDay, series: String? = nil) -> [String] {
+        let files = filesPath(branch, name: name, startDay: startDay, series: series)
         return files.count > insideProjectFiles.count ? Array(files.dropLast(insideProjectFiles.count)) : files
     }
+
+    /// The same structure without the Photo / Video level, for photos and videos that go to
+    /// different folders (where that level would only add an extra folder).
+    public var withoutMediaType: FolderStructure {
+        var copy = self
+        copy.levels.removeAll { $0.kind == .mediaType }
+        return copy
+    }
+
+    public var hasMediaType: Bool { levels.contains { $0.kind == .mediaType } }
 
     /// The split level when it comes after the project folder.
     private var splitInsideProject: FolderLevel? {
@@ -221,7 +232,7 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         splitInsideProject.map { [Self.safe($0.exported, fallback: "Exported")] }
     }
 
-    private func components(_ branch: Branch, name: String, startDay: ShootDay, exported: Bool) -> [String] {
+    private func components(_ branch: Branch, name: String, startDay: ShootDay, series: String?, exported: Bool) -> [String] {
         var path = [String(startDay.year)]
         var passedSplit = false
         var passedProject = false
@@ -239,6 +250,9 @@ public struct FolderStructure: Codable, Hashable, Sendable {
                 // Split inside the project folder: …/Name/Exported
                 if exported, passedProject { return path }
             case .project:
+                if let series, !series.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    path.append(Self.safe(series, fallback: "Shoot"))
+                }
                 path.append(Self.projectFolderName(name: name, startDay: startDay, level: level))
                 passedProject = true
                 // Split above the project folder: …/Exported/…/Name

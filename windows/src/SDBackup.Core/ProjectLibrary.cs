@@ -30,15 +30,23 @@ public sealed record LibraryManifest
 
     private readonly FolderStructure? _structure;
 
-    /// <summary>The structure new projects in this folder get.</summary>
+    /// <summary>The folder structure new projects' videos get. Null in folders set up before 1.3, where the videos follow <see cref="Structure"/>.</summary>
+    [JsonPropertyName("videoStructure"), JsonConverter(typeof(TolerantStructureConverter))]
+    public FolderStructure? VideoStructure { get; init; }
+
+    /// <summary>The structure new projects' photos in this folder get.</summary>
     [JsonIgnore] public FolderStructure Layout => Structure ?? FolderStructure.Standard;
 
-    public static LibraryManifest Create(Guid libraryId, IEnumerable<ProjectInfo> projects, FolderStructure? structure = null) => new()
+    /// <summary>The structure new projects' videos in this folder get.</summary>
+    [JsonIgnore] public FolderStructure VideoLayout => VideoStructure ?? Layout;
+
+    public static LibraryManifest Create(Guid libraryId, IEnumerable<ProjectInfo> projects, FolderStructure? structure = null, FolderStructure? videoStructure = null) => new()
     {
         LibraryId = libraryId,
         // A projects folder for videos also lists the projects whose videos it holds; they keep their own library.
         Projects = projects.Select(p => p.VideoLibraryId == libraryId ? p.Portable : p.Portable with { LibraryId = libraryId }).ToList(),
         Structure = structure,
+        VideoStructure = videoStructure,
     };
 
     public static string PathIn(string root) => Path.Combine(root, FolderName, FileName);

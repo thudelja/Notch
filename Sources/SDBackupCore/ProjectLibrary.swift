@@ -14,19 +14,23 @@ public struct LibraryManifest: Codable, Sendable, Equatable {
     public var formatVersion: Int
     public let libraryID: UUID
     public var projects: [ProjectInfo]
-    /// The folder structure new projects get, or nil for the standard one. Older versions ignore it
-    /// (and build the standard structure).
+    /// The folder structure new projects' photos get, or nil for the standard one. Older versions
+    /// ignore it (and build the standard structure).
     public var structure: FolderStructure?
+    /// The folder structure new projects' videos get. Nil in folders set up before 1.3, where the
+    /// videos follow `structure`.
+    public var videoStructure: FolderStructure?
 
     private enum CodingKeys: String, CodingKey {
-        case formatVersion, libraryID, projects, structure
+        case formatVersion, libraryID, projects, structure, videoStructure
     }
 
-    public init(libraryID: UUID = UUID(), projects: [ProjectInfo] = [], structure: FolderStructure? = nil) {
+    public init(libraryID: UUID = UUID(), projects: [ProjectInfo] = [], structure: FolderStructure? = nil, videoStructure: FolderStructure? = nil) {
         self.formatVersion = Self.currentFormatVersion
         self.libraryID = libraryID
         self.projects = projects.map(\.portable)
         self.structure = structure == FolderStructure.standard ? nil : structure
+        self.videoStructure = videoStructure
     }
 
     public init(from decoder: Decoder) throws {
@@ -37,10 +41,15 @@ public struct LibraryManifest: Codable, Sendable, Equatable {
         // A structure this version can't read, or a broken one, means the standard structure.
         let structure = (try? container.decodeIfPresent(FolderStructure.self, forKey: .structure)) ?? nil
         self.structure = structure?.isValid == true ? structure : nil
+        let videoStructure = (try? container.decodeIfPresent(FolderStructure.self, forKey: .videoStructure)) ?? nil
+        self.videoStructure = videoStructure?.isValid == true ? videoStructure : nil
     }
 
-    /// The structure new projects in this folder get.
+    /// The structure new projects' photos in this folder get.
     public var layout: FolderStructure { structure ?? .standard }
+
+    /// The structure new projects' videos in this folder get.
+    public var videoLayout: FolderStructure { videoStructure ?? layout }
 
     public static func url(in root: URL) -> URL {
         root.appendingPathComponent(folderName, isDirectory: true).appendingPathComponent(fileName, isDirectory: false)

@@ -171,21 +171,24 @@ public sealed record FolderStructure
 
     /// <summary>
     /// Where a project's files go: for photos the folder holding the camera folders, for videos the folder holding the
-    /// video folders. Ends in the Unedited folder when the split comes after the project folder.
+    /// video folders. Ends in the Unedited folder when the split comes after the project folder. A project of a
+    /// multi-day shoot (<paramref name="series"/>) sits in the shoot's folder, which takes the project folder's place:
+    /// …\AMD Koledar 2026.11.2026 Ana.
     /// </summary>
-    public IReadOnlyList<string> FilesPath(Branch branch, string name, ShootDay startDay) => Components(branch, name, startDay, exported: false);
+    public IReadOnlyList<string> FilesPath(Branch branch, string name, ShootDay startDay, string? series = null) =>
+        Components(branch, name, startDay, series, exported: false);
 
     /// <summary>
     /// The empty Exported folder for a project, or null without a split: the same path as the files down to the project
     /// folder, with the Exported name in place of the Unedited one.
     /// </summary>
-    public IReadOnlyList<string>? ExportedPath(Branch branch, string name, ShootDay startDay) =>
-        HasSplit ? Components(branch, name, startDay, exported: true) : null;
+    public IReadOnlyList<string>? ExportedPath(Branch branch, string name, ShootDay startDay, string? series = null) =>
+        HasSplit ? Components(branch, name, startDay, series, exported: true) : null;
 
     /// <summary>The path down to and including the project folder (with the Unedited name when the split is above it).</summary>
-    public IReadOnlyList<string> ProjectPath(Branch branch, string name, ShootDay startDay)
+    public IReadOnlyList<string> ProjectPath(Branch branch, string name, ShootDay startDay, string? series = null)
     {
-        var files = FilesPath(branch, name, startDay);
+        var files = FilesPath(branch, name, startDay, series);
         var inside = InsideProjectFiles.Count;
         return files.Count > inside ? files.Take(files.Count - inside).ToList() : files;
     }
@@ -213,7 +216,13 @@ public sealed record FolderStructure
     public IReadOnlyList<string>? InsideProjectExported =>
         SplitInsideProject is { } split ? [Safe(split.Exported, "Exported")] : null;
 
-    private List<string> Components(Branch branch, string name, ShootDay startDay, bool exported)
+    /// <summary>The same structure without the Photo / Video level, for photos and videos that go to different folders.</summary>
+    [JsonIgnore]
+    public FolderStructure WithoutMediaType => this with { Levels = Levels.Where(l => l.Kind != FolderLevel.LevelKind.MediaType).ToList() };
+
+    [JsonIgnore] public bool HasMediaType => Levels.Any(l => l.Kind == FolderLevel.LevelKind.MediaType);
+
+    private List<string> Components(Branch branch, string name, ShootDay startDay, string? series, bool exported)
     {
         var path = new List<string> { $"{startDay.Year:0000}" };
         var passedSplit = false;
@@ -239,6 +248,7 @@ public sealed record FolderStructure
                     if (exported && passedProject) return path;
                     break;
                 case FolderLevel.LevelKind.Project:
+                    if (!string.IsNullOrWhiteSpace(series)) path.Add(Safe(series, "Shoot"));
                     path.Add(ProjectFolderName(name, startDay, level));
                     passedProject = true;
                     // Split above the project folder: …\Exported\…\Name
@@ -379,6 +389,33 @@ public sealed record FolderExample(string Title, string Path);
 
 /// <summary>Enum values as camelCase strings ("mediaType"), like the Mac version's raw values.</summary>
 public sealed class CamelCaseEnumConverter() : JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false);
+
+/// <summary>
+/// Reads a project's video structure without failing the whole file: one this version can't read, or one that breaks
+/// the rules, is read as the standard structure (the project stays one made since 1.3, see <see cref="ProjectInfo.VideoStructure"/>).
+/// </summary>
+public sealed class TolerantVideoStructureConverter : JsonConverter<FolderStructure?>
+{
+    public override FolderStructure? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using var document = JsonDocument.ParseValue(ref reader);
+        if (document.RootElement.ValueKind == JsonValueKind.Null) return null;
+        try
+        {
+            return document.RootElement.Deserialize<FolderStructure>(options) is { IsValid: true } structure ? structure : FolderStructure.Standard;
+        }
+        catch (JsonException)
+        {
+            return FolderStructure.Standard;
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, FolderStructure? value, JsonSerializerOptions options)
+    {
+        if (value is null) writer.WriteNullValue();
+        else JsonSerializer.Serialize(writer, value, options);
+    }
+}
 
 /// <summary>
 /// Reads a folder structure without failing the whole file: one this version can't read (written by a newer version,
