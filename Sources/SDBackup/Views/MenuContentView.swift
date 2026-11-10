@@ -282,16 +282,69 @@ private struct DayRow: View {
 
             Picker("Project for \(summary.day.folderDate)", selection: choice) {
                 ForEach(draft.options(for: summary.day)) { option in
-                    Text(option.title).tag(option.choice)
+                    Text(verbatim: option.title).tag(option.choice)
                 }
             }
             .labelsHidden()
             .pickerStyle(.menu)
 
-            if draft.choice(for: summary.day).isNewProject {
+            switch draft.choice(for: summary.day) {
+            case .newShoot:
+                TextField("Multi-day shoot, e.g. AMD Koledar 2026", text: shootName)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Name of this day’s project, e.g. the model", text: name)
+                    .textFieldStyle(.roundedBorder)
+            case .newInShoot(let id):
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
+                if let shoot = draft.shoot(id) {
+                    HoldToFinishButton(
+                        title: String(localized: "Hold to finish “\(shoot.name)”"),
+                        doneTitle: String(localized: "“\(shoot.name)” is finished after this import")
+                    ) {
+                        model.finishShoot(id)
+                    }
+                }
+            case .newProject:
+                TextField("New project name", text: name)
+                    .textFieldStyle(.roundedBorder)
+                if draft.hasPhotos { placeRow(.photo) }
+                if draft.hasVideos { placeRow(.video) }
+            default:
+                EmptyView()
             }
+        }
+    }
+
+    /// "Photos → Projects  [Change…]": where a new project's photos or videos go.
+    private func placeRow(_ branch: FolderStructure.Branch) -> some View {
+        let chosen = draft.folder(for: branch, day: summary.day)
+        let place = chosen?.lastPathComponent ?? model.defaultRoot(branch).lastPathComponent
+        return HStack(spacing: 6) {
+            Image(systemName: branch == .photo ? "photo" : "video")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(branch == .photo ? String(localized: "Photos → \(place)") : String(localized: "Videos → \(place)"))
+                .font(.moduleSubtitle)
+                .foregroundStyle(chosen == nil ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 4)
+            if chosen != nil {
+                Button {
+                    draft.setFolder(nil, for: branch, day: summary.day)
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Back to the default folder"))
+            }
+            Button("Change…") {
+                // After the menu has closed, so the folder panel can take focus.
+                let day = summary.day
+                DispatchQueue.main.async { [model, draft] in model.chooseFolder(for: branch, day: day, in: draft) }
+            }
+            .controlSize(.small)
         }
     }
 
@@ -307,15 +360,14 @@ private struct DayRow: View {
     private var choice: Binding<DayChoice> {
         Binding(
             get: { draft.choice(for: summary.day) },
-            set: { newValue in
-                if newValue == .chooseFolder {
-                    // After the menu has closed, so the folder panel can take focus.
-                    let day = summary.day
-                    DispatchQueue.main.async { [model, draft] in model.chooseProjectFolder(for: day, in: draft) }
-                } else {
-                    draft.setChoice(newValue, for: summary.day)
-                }
-            }
+            set: { draft.setChoice($0, for: summary.day) }
+        )
+    }
+
+    private var shootName: Binding<String> {
+        Binding(
+            get: { draft.shootNames[summary.day] ?? "" },
+            set: { draft.shootNames[summary.day] = $0 }
         )
     }
 

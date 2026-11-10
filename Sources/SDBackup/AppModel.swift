@@ -285,7 +285,8 @@ final class AppModel: ObservableObject {
         return ImportDraft(
             volume: volume,
             analysis: analysis,
-            recentProjects: library.recentProjects(limit: 3),
+            recentProjects: library.recentProjects(limit: 2),
+            openShoots: library.shoots.open,
             cameraNames: names
         )
     }
@@ -300,7 +301,9 @@ final class AppModel: ObservableObject {
     func startImport(_ draft: ImportDraft) {
         guard draft.isReady else { return }
         library.refreshLocations()
-        guard let projects = draft.resolvedProjects(store: library, root: settings.destinationURL, videosRoot: settings.videosURL) else {
+        guard let projects = draft.resolvedProjects(
+            store: library, photosRoot: settings.destinationURL, videosRoot: settings.videosURL ?? settings.destinationURL
+        ) else {
             let folders = settings.abbreviatedVideos.map { "\(settings.abbreviatedDestination) or \($0)" } ?? settings.abbreviatedDestination
             showAlert(
                 "The projects folder isn’t available",
@@ -319,6 +322,9 @@ final class AppModel: ObservableObject {
         }
         let plan = ProjectLayout.plan(items: draft.analysis.items, projects: projects) { draft.cameraName(for: $0) }
         library.rememberCameraNames(draft.cameraNames, cardID: draft.volume.cardID)
+        let shoots = draft.shootsUsed
+        for name in shoots.started { library.shoots.start(name) }
+        for name in shoots.continued { library.shoots.markUsed(name) }
         drafts.removeAll { $0.id == draft.id }
         guard !plan.items.isEmpty else { return }
 
@@ -634,26 +640,38 @@ final class AppModel: ObservableObject {
         settings.videosPath = ""
     }
 
-    /// Import panel › "New project in a folder…": asks for a folder. The folder of a project Notch
-    /// knows adds the day to that project; any other folder gets the new project's folder inside it.
-    func chooseProjectFolder(for day: ShootDay, in draft: ImportDraft) {
+    /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in.
+    /// The folder of a project Notch knows adds the day to that project instead.
+    func chooseFolder(for branch: FolderStructure.Branch, day: ShootDay, in draft: ImportDraft) {
         let panel = NSOpenPanel()
-        panel.title = "New Project in a Folder"
-        panel.message = "Notch makes the project’s folder (date and name) inside the folder you choose. Choose a project’s own folder to add \(day.folderDate) to it."
-        panel.prompt = "Choose"
+        panel.title = branch == .photo ? String(localized: "Where Should the Photos Go?") : String(localized: "Where Should the Videos Go?")
+        panel.message = String(localized: "Notch makes the project’s folder (date and name) inside the folder you choose. Choose a project’s own folder to add \(day.folderDate) to it.")
+        panel.prompt = String(localized: "Choose")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.directoryURL = settings.destinationURL
+        panel.directoryURL = draft.folder(for: branch, day: day)
+            ?? (branch == .photo ? settings.destinationURL : settings.videosURL ?? settings.destinationURL)
         AppActivation.bringToFront()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         library.refreshLocations()
         if let project = library.project(atFolder: url) {
             draft.useProject(project, for: day)
         } else {
-            draft.setChoice(.newProjectIn(url.standardizedFileURL), for: day)
+            draft.setFolder(url.standardizedFileURL, for: branch, day: day)
         }
+    }
+
+    /// The import panel's or Settings' "hold to finish": the shoot leaves the import panel.
+    func finishShoot(_ id: UUID) {
+        guard let shoot = library.shoots.shoot(id: id) else { return }
+        library.shoots.finish(id)
+        log.write("Finished the multi-day shoot “\(shoot.name)”")
+    }
+
+    func reopenShoot(_ id: UUID) {
+        library.shoots.reopen(id)
     }
 
     func forgetImportedFiles() {
@@ -711,23 +729,41 @@ final class AppModel: ObservableObject {
 
     // MARK: - Folder structure
 
-    /// The folder structure new projects get in the projects folder.
-    func folderStructure() -> FolderStructure {
-        library.structure(at: settings.destinationURL)
+    /// The folder holding new projects' photos or videos by default.
+    func defaultRoot(_ branch: FolderStructure.Branch) -> URL {
+        branch == .photo ? settings.destinationURL : settings.videosURL ?? settings.destinationURL
     }
 
-    /// Saves the folder structure for new projects. Shows an alert and returns false when the
+    /// The folder structure new projects' photos or videos get. With different folders for photos
+    /// and videos, without the Photo / Video level (left out when projects are created).
+    func folderStructure(_ branch: FolderStructure.Branch) -> FolderStructure {
+        library.structure(branch, at: defaultRoot(branch))
+    }
+
+    /// Photos and videos go to different folders, so the Photo / Video level is left out.
+    var hasSeparateFolders: Bool { settings.videosURL != nil }
+
+    /// Saves the folder structures for new projects. Shows an alert and returns false when a
     /// projects folder can't be written.
     @discardableResult
-    func saveFolderStructure(_ structure: FolderStructure) -> Bool {
-        guard library.setStructure(structure, at: settings.destinationURL) else {
+    func saveFolderStructures(photo: FolderStructure, video: FolderStructure) -> Bool {
+        let photoRoot = defaultRoot(.photo)
+        let videoRoot = defaultRoot(.video)
+        let saved = library.setStructure(photo, for: .photo, at: photoRoot)
+            && library.setStructure(video, for: .video, at: videoRoot)
+        guard saved else {
+            let folders = settings.abbreviatedVideos.map { "\(settings.abbreviatedDestination) / \($0)" } ?? settings.abbreviatedDestination
             showAlert(
-                "The folder structure wasn’t saved",
-                "\(settings.abbreviatedDestination) can’t be written. If it’s on an external drive, connect it and try again."
+                String(localized: "The folder structure wasn’t saved"),
+                String(localized: "\(folders) can’t be written. If it’s on an external drive, connect it and try again.")
             )
             return false
         }
-        log.write(["Folder structure for new projects in \(settings.destinationURL.path):"] + structure.summary.map { "    " + $0 })
+        log.write([
+            "Folder structure for new projects:",
+            "    Photos (\(photoRoot.path)): " + photo.examplePath(.photo).joined(separator: "/"),
+            "    Videos (\(videoRoot.path)): " + video.examplePath(.video).joined(separator: "/"),
+        ])
         return true
     }
 

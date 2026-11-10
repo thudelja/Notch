@@ -344,6 +344,37 @@ public struct FolderStructure: Codable, Hashable, Sendable {
         return lines
     }
 
+    /// A sample file's path for photos or videos (2 November 2026, project "Ana Wedding", camera
+    /// "R5"), for the editor and Settings: e.g. ["2026", "Photo", "11 November",
+    /// "02.11.2026 Ana Wedding", "R5", "IMG_0001.CR3"].
+    public func examplePath(_ branch: Branch, series: String? = nil) -> [String] {
+        let day = ShootDay(year: 2026, month: 11, day: 2)
+        let camera: [String] = cameraFolders ? ["R5"] : []
+        switch branch {
+        case .photo:
+            return filesPath(.photo, name: "Ana Wedding", startDay: day, series: series) + camera + ["IMG_0001.CR3"]
+        case .video:
+            let media: [String] = mediaFolder.isEmpty ? [] : [Self.safe(mediaFolder, fallback: "Media")]
+            return filesPath(.video, name: "Ana Wedding", startDay: day, series: series) + media + camera + ["C0001.MP4"]
+        }
+    }
+
+    /// The sample project's empty Exported folder for photos or videos, with a split.
+    public func exampleExports(_ branch: Branch, series: String? = nil) -> [String]? {
+        exportedPath(branch, name: "Ana Wedding", startDay: ShootDay(year: 2026, month: 11, day: 2), series: series)
+    }
+
+    /// The problems that matter for one kind of files: a photo structure's video folders are never used.
+    public func problems(for branch: Branch) -> [String] {
+        guard branch == .photo else { return problems }
+        let videoOnly: Set<String> = [
+            "Every video project folder needs a name.",
+            "Video project folders need different names.",
+            "The folder for videos must be one of the video project folders.",
+        ]
+        return problems.filter { !videoOnly.contains($0) }
+    }
+
     /// Sample paths for the structure editor: where a photo and a video go, and with a split the
     /// empty Exported folders.
     public func examples(separator: String) -> [FolderExample] {
