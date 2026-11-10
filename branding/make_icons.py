@@ -174,6 +174,30 @@ def svg() -> str:
 """
 
 
+# Every image macOS's own iconutil writes: the 1x and 2x versions of 16, 32, 128, 256 and 512 points.
+# (Pillow's icns writer leaves out the 16 and 32 px ones, which some parts of macOS use.)
+ICNS_TYPES = (
+    (b"icp4", 16), (b"icp5", 32), (b"ic11", 32), (b"ic12", 64), (b"ic07", 128),
+    (b"ic13", 256), (b"ic08", 256), (b"ic14", 512), (b"ic09", 512), (b"ic10", 1024),
+)
+
+
+def save_icns(path: Path, images: dict[int, Image.Image]) -> None:
+    """Writes an .icns file with a PNG for every type in ICNS_TYPES, and a table of contents."""
+    import io
+    import struct
+
+    entries = []
+    for kind, size in ICNS_TYPES:
+        data = io.BytesIO()
+        images[size].save(data, format="PNG", optimize=True)
+        entries.append((kind, data.getvalue()))
+    toc = b"TOC " + struct.pack(">I", 8 + 8 * len(entries)) + b"".join(
+        kind + struct.pack(">I", 8 + len(png)) for kind, png in entries)
+    body = toc + b"".join(kind + struct.pack(">I", 8 + len(png)) + png for kind, png in entries)
+    path.write_bytes(b"icns" + struct.pack(">I", 8 + len(body)) + body)
+
+
 def main() -> None:
     BRANDING.mkdir(exist_ok=True)
     (BRANDING / "notch.svg").write_text(svg(), encoding="utf-8")
@@ -183,7 +207,7 @@ def main() -> None:
 
     # Mac: the shadow is part of the artwork on macOS.
     mac = {size: render(size, margin=MAC_MARGIN, shadow=size >= 64) for size in (16, 32, 64, 128, 256, 512, 1024)}
-    mac[1024].save(MAC_RESOURCES / "AppIcon.icns", append_images=[mac[s] for s in (16, 32, 64, 128, 256, 512)])
+    save_icns(MAC_RESOURCES / "AppIcon.icns", mac)
     print("Wrote Resources/AppIcon.icns")
 
     # Windows: Explorer, Start and the taskbar pick the size they need from the .ico.

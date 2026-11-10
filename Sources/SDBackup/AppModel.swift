@@ -82,6 +82,7 @@ final class AppModel: ObservableObject {
     private static let loginItemConfiguredKey = "loginItemConfigured.notch"
 
     init() {
+        DefaultsMigration.run()
         settings = AppSettings()
         library = LibraryStore()
         log = BackupLog()

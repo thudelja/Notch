@@ -111,7 +111,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Memory") {
+            Section {
                 HStack {
                     Button("Forget Imported Files…") { model.forgetImportedFiles() }
                     Button("Forget Camera Names") { model.forgetCameraNames() }
@@ -120,6 +120,14 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Memory")
+            } footer: {
+                Text(verbatim: Self.versionText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 8)
             }
         }
         .formStyle(.grouped)
@@ -135,6 +143,12 @@ struct SettingsView: View {
                 return true
             }
         }
+    }
+
+    /// "Notch 1.2.0"; builds that aren't releases are "0.0.0-dev".
+    static var versionText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return version.isEmpty || version.hasPrefix("0.0.0") ? "Notch (test build)" : "Notch \(version)"
     }
 
     private func reloadYears() {

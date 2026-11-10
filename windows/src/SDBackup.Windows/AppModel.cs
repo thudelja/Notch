@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -122,6 +123,18 @@ public sealed class AppModel : ObservableObject, IDisposable
     public bool IsBusy => _activeJob is not null || _analyzing is not null || _migrationStatus is not null;
     public bool IsMigrating => _migrationStatus is not null;
     public StatusViewModel? MigrationStatus => _migrationStatus;
+
+    /// <summary>"Notch 1.2.0" (Settings). CI sets the version from the release tag; other builds are "0.0.0-dev".</summary>
+    public string VersionText => s_versionText;
+
+    private static readonly string s_versionText = MakeVersionText();
+
+    private static string MakeVersionText()
+    {
+        var version = Assembly.GetEntryAssembly()?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+        version = version.Split('+')[0]; // Without the commit .NET adds.
+        return version.Length == 0 || version.StartsWith("0.0.0", StringComparison.Ordinal) ? "Notch (test build)" : $"Notch {version}";
+    }
 
     public string ProjectsFolderName => Path.GetFileName(PathUtil.Normalize(Settings.ProjectsFolder)) is { Length: > 0 } name ? name : Settings.ProjectsFolder;
 

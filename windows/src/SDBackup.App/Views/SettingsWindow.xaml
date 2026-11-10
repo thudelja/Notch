@@ -158,6 +158,9 @@
                                Text="Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera." />
                 </StackPanel>
             </Border>
+
+            <TextBlock Style="{StaticResource CaptionText}" HorizontalAlignment="Center" Margin="0,14,0,0"
+                       Text="{Binding VersionText, Mode=OneTime}" />
         </StackPanel>
     </ScrollViewer>
 </Window>
