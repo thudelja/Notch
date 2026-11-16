@@ -134,7 +134,7 @@ internal static class SelfTest
                     throw new InvalidOperationException("Settings doesn't show the version.");
                 }
                 // The windows' own texts ({l:T …}) are in the language too.
-                if (Descendants<TextBlock>(settings).All(text => text.Text != Loc.T("Multi-day shoots")))
+                if (Descendants<TextBlock>(settings).All(text => text.Text != Loc.T("Multi-day shoots and folders")))
                 {
                     throw new InvalidOperationException($"Settings isn't in {language}.");
                 }
