@@ -61,12 +61,10 @@ final class ImportDraft: ObservableObject, Identifiable {
     let hasVideos: Bool
 
     @Published private(set) var choices: [ShootDay: DayChoice] = [:]
-    /// Existing projects picked by choosing their folder, beyond the recent ones.
-    @Published private(set) var chosenProjects: [ProjectInfo] = []
     @Published var projectNames: [ShootDay: String] = [:]
     /// The name of a new multi-day shoot started on that day.
     @Published var shootNames: [ShootDay: String] = [:]
-    /// Folders chosen for a new project's photos or videos (the project folder is made inside).
+    /// Folders picked with Other… for a day's photos or videos.
     @Published private(set) var photoFolders: [ShootDay: URL] = [:]
     @Published private(set) var videoFolders: [ShootDay: URL] = [:]
     /// Shoots finished in this panel. They still take this import; every day in them shows them as finished.
@@ -130,22 +128,6 @@ final class ImportDraft: ObservableObject, Identifiable {
         }
     }
 
-    /// The user chose the folder of an existing project for this day.
-    func useProject(_ project: ProjectInfo, for day: ShootDay) {
-        if !knownProjects.contains(where: { $0.id == project.id }) {
-            chosenProjects.append(project)
-        }
-        setChoice(.existing(project.id), for: day)
-    }
-
-    /// A folder chosen for a new project's photos or videos; nil goes back to the default place.
-    func setFolder(_ folder: URL?, for branch: FolderStructure.Branch, day: ShootDay) {
-        switch branch {
-        case .photo: photoFolders[day] = folder
-        case .video: videoFolders[day] = folder
-        }
-    }
-
     func folder(for branch: FolderStructure.Branch, day: ShootDay) -> URL? {
         // A remembered Other… folder brings its own folders.
         if case .inFolder(let id) = choice(for: day), let remembered = shoot(id)?.folder {
@@ -197,7 +179,7 @@ final class ImportDraft: ObservableObject, Identifiable {
     /// Other… folders this import uses, to remember (or remember again) once it starts.
     var foldersUsed: [OtherFolder] { days.compactMap { otherFolder(for: $0.day) } }
 
-    private var knownProjects: [ProjectInfo] { recentProjects + chosenProjects }
+    private var knownProjects: [ProjectInfo] { recentProjects }
 
     func shoot(_ id: UUID) -> MultiDayShoot? {
         openShoots.first { $0.id == id }
@@ -304,9 +286,9 @@ final class ImportDraft: ObservableObject, Identifiable {
         }
         for (owner, members) in newProjectDays {
             guard let start = members.min(), let shootName = series(for: owner) else { continue }
-            // Folders can be chosen for a plain new project and with Other…; a shoot's projects go in the shoot's folder.
+            // Other… goes to the folders picked for it; other new projects to their default places (a shoot's in its folder).
             let ownerChoice = choice(for: owner)
-            let chosen = ownerChoice == .newProject || ownerChoice.isOther
+            let chosen = ownerChoice.isOther
             let newFolder = !ownerChoice.isOther || self.newFolder(for: owner)
             guard let project = store.newProject(
                 projectName(for: owner), startDay: start, series: shootName.isEmpty ? nil : shootName,

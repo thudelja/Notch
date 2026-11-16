@@ -143,33 +143,13 @@
                                                 <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'New folder for this project'}" />
                                             </CheckBox>
 
-                                            <!-- Where a new project's photos and videos go: "Photos → Projects  [Change…]" -->
+                                            <!-- Other…: where the project's photos and videos go -->
                                             <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsPhotoPlace, Converter={StaticResource BoolToVisible}}">
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="{l:T 'Change…'}"
-                                                        ToolTip="{l:T 'Choose the folder this project’s photos go in'}"
-                                                        AutomationProperties.Name="{l:T 'Change where the photos go'}" Command="{Binding ChangePhotosCommand}"
-                                                        Visibility="{Binding CanChangePlaces, Converter={StaticResource BoolToVisible}}" />
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
-                                                        ToolTip="{l:T 'Back to the default folder'}" AutomationProperties.Name="{l:T 'Photos back to the default folder'}"
-                                                        Visibility="{Binding CanResetPhotoFolder, Converter={StaticResource BoolToVisible}}"
-                                                        Command="{Binding ResetPhotosCommand}">
-                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
-                                                </Button>
                                                 <TextBlock DockPanel.Dock="Left" Style="{StaticResource IconText}" FontSize="12" Width="18" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" Text="&#xE91B;" />
                                                 <TextBlock Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,6,0" Text="{Binding PhotoPlaceText}" />
                                             </DockPanel>
                                             <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsVideoPlace, Converter={StaticResource BoolToVisible}}">
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="{l:T 'Change…'}"
-                                                        ToolTip="{l:T 'Choose the folder this project’s videos go in'}"
-                                                        AutomationProperties.Name="{l:T 'Change where the videos go'}" Command="{Binding ChangeVideosCommand}"
-                                                        Visibility="{Binding CanChangePlaces, Converter={StaticResource BoolToVisible}}" />
-                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
-                                                        ToolTip="{l:T 'Back to the default folder'}" AutomationProperties.Name="{l:T 'Videos back to the default folder'}"
-                                                        Visibility="{Binding CanResetVideoFolder, Converter={StaticResource BoolToVisible}}"
-                                                        Command="{Binding ResetVideosCommand}">
-                                                    <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
-                                                </Button>
                                                 <TextBlock DockPanel.Dock="Left" Style="{StaticResource IconText}" FontSize="12" Width="18" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" Text="&#xE714;" />
                                                 <TextBlock Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,6,0" Text="{Binding VideoPlaceText}" />

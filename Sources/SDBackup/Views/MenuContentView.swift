@@ -301,12 +301,10 @@ private struct DayRow: View {
             case .newProject:
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
-                if draft.hasPhotos { placeRow(.photo) }
-                if draft.hasVideos { placeRow(.video) }
             case .other:
-                otherRows(changeable: true)
+                otherRows()
             case .inFolder(let id):
-                otherRows(changeable: false)
+                otherRows()
                 finishRow(id)
             default:
                 EmptyView()
@@ -314,10 +312,10 @@ private struct DayRow: View {
         }
     }
 
-    /// Other…, picked now (`changeable`) or remembered: the name, the new-folder switch and where
-    /// the photos and videos go.
+    /// Other…, picked now or remembered: the name, the new-folder switch and where the photos and
+    /// videos go. (To pick other folders, choose Other… again.)
     @ViewBuilder
-    private func otherRows(changeable: Bool) -> some View {
+    private func otherRows() -> some View {
         if draft.newFolder(for: summary.day) {
             TextField("New project name", text: name)
                 .textFieldStyle(.roundedBorder)
@@ -329,8 +327,8 @@ private struct DayRow: View {
             .toggleStyle(.switch)
             .controlSize(.small)
             .help(String(localized: "Off: the files go straight into the folders you picked, in their camera folders."))
-        if draft.hasPhotos { placeRow(.photo, changeable: changeable, resettable: false) }
-        if draft.hasVideos { placeRow(.video, changeable: changeable, resettable: changeable) }
+        if draft.hasPhotos { placeRow(.photo) }
+        if draft.hasVideos { placeRow(.video) }
     }
 
     /// A multi-day shoot's or remembered folder's hold-to-finish button.
@@ -352,9 +350,8 @@ private struct DayRow: View {
         }
     }
 
-    /// "Photos → Projects  [Change…]": where a new project's photos or videos go. A remembered
-    /// folder's places can't be changed; Other…'s photos can't go back to the default.
-    private func placeRow(_ branch: FolderStructure.Branch, changeable: Bool = true, resettable: Bool = true) -> some View {
+    /// "Photos → Clients": where Other…'s photos or videos go (their usual place when none was picked).
+    private func placeRow(_ branch: FolderStructure.Branch) -> some View {
         let chosen = draft.folder(for: branch, day: summary.day)
         let place = chosen?.lastPathComponent ?? model.defaultRoot(branch).lastPathComponent
         return HStack(spacing: 6) {
@@ -366,25 +363,9 @@ private struct DayRow: View {
                 .foregroundStyle(chosen == nil ? .secondary : .primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 4)
-            if chosen != nil, changeable, resettable {
-                Button {
-                    draft.setFolder(nil, for: branch, day: summary.day)
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Back to the default folder"))
-            }
-            if changeable {
-                Button("Change…") {
-                    // After the menu has closed, so the folder panel can take focus.
-                    let day = summary.day
-                    DispatchQueue.main.async { [model, draft] in model.chooseFolder(for: branch, day: day, in: draft) }
-                }
-                .controlSize(.small)
-            }
+            Spacer(minLength: 0)
         }
+        .help(chosen?.path ?? model.defaultRoot(branch).path)
     }
 
     private var counts: String {

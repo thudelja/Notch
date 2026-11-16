@@ -103,11 +103,8 @@ je nastal, in ko mu dodate dan, gredo datoteke še vedno v njegovo mapo.
 3. **Kliknite ikono Notch** (kartica SD s kljukico) v menijski vrstici. Podokno za uvoz navede vsak
    datum snemanja na kartici s številom fotografij, videoposnetkov in zvočnih posnetkov. Za vsak
    datum izberite:
-   - **Nov projekt** in vnesite njegovo ime. Pod imenom **Fotografije → Projects** in
-     **Videoposnetki → Projects** pokažeta, kam gredo njegove datoteke. **Spremeni …** izbere drugo
-     mapo za fotografije ali za videoposnetke (drugi ostanejo na svojem mestu): Notch naredi mapo
-     projekta (`02.11.2026 Ana`) v mapi, ki jo izberete. Če izberete mapo projekta, ki ga Notch že
-     pozna, se datum doda temu projektu; tako dosežete starejše projekte.
+   - **Nov projekt** in vnesite njegovo ime. Gre v mapo s projekti (in mapo za videoposnetke) iz
+     nastavitev; če ga želite drugam, uporabite **Drugo …** spodaj.
    - **Novo večdnevno snemanje …** za snemanje čez več dni ali kartic, na primer koledar: vnesite ime
      snemanja (`AMD Koledar 2026`) in projekt dneva (`Ana`). Glejte
      [Večdnevna snemanja](#večdnevna-snemanja).

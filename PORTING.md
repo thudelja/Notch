@@ -174,8 +174,8 @@ empty means "same as photos"). It is a projects folder like any other, with its 
 ### 2.3 A project in a folder the user chose
 
 In 1.2, the import panel's **New project in a folder…** made the project folder inside a folder the
-user picked; since 1.3 a new project's **Change…** does the same for its photos or its videos alone
-(section 2.4). The project folder is `<picked folder>/<project folder name>`, named by the structure's
+user picked; in 1.3 a new project's **Change…** did the same for its photos or its videos alone; since
+1.4.1, **Other…** does it (section 2.7), and a new project always goes to its default places. The project folder is `<picked folder>/<project folder name>`, named by the structure's
 project level (section 2.1). The project stores `folder` (photos) or `videoFolder` (videos, 1.3): the
 path of that project folder below its projects folder, as components, e.g.
 `["2026", "AMD Koledar 2026", "02.11.2026 Ana"]`.
@@ -189,8 +189,8 @@ path of that project folder below its projects folder, as components, e.g.
   project folder applies (files go into `<folder>/<unedited>`, and `<folder>/<exported>` is made
   empty). In 1.2 a chosen folder took the videos too (`folder` for both); a 1.2 project keeps that
   (section 2.4).
-- If the picked folder is the photo or video project folder of a known project (or its `folder`),
-  the day is added to that project instead of making a new one.
+- (1.2 and 1.3:) if the picked folder was the photo or video project folder of a known project, the day
+  was added to that project instead. Other… uses a folder as picked.
 
 ### 2.4 Photos and videos each have a destination (1.3)
 
@@ -203,9 +203,9 @@ Photos and videos each have a **destination**: a projects folder and a structure
 - **The Photo / Video level is automatic.** When photos and videos go to the same projects folder,
   it keeps them apart (`2026/Photo/…` and `2026/Video/…`). When they go to different projects
   folders, a new project leaves it out of both (`FolderStructure.withoutMediaType`).
-- **Per new project** (import panel): the row shows "Photos → <folder name>" and "Videos → <folder
-  name>", each with **Change…** (a folder picker, section 2.3) and, once changed, a button back to
-  the default. Changing one leaves the other at its default.
+- **Per new project:** a new project goes to these defaults. (In 1.3 its row had **Change…** for the
+  photos and the videos; since 1.4.1 the import panel has no Change…: **Other…**, section 2.7, picks
+  other folders, and Settings changes the defaults.)
 - **A new project stores** `structure` and `videoStructure` (both always, since 1.3, with the
   Photo / Video level removed as above), `libraryID` and `videoLibraryID` (when different),
   `folder` and `videoFolder` (when chosen) and `series` (section 2.5).
@@ -266,12 +266,14 @@ Windows: the display language), or Settings › General › Language (Mac `langu
   it has videos). Closing the first goes back to the day's previous choice; closing the videos' one
   leaves the videos at their default destination (section 2.4).
 - **New folder for this project** (on by default): the project folder ("date name", by the structure's
-  project level) is made in the picked folder, as with Change… (section 2.3). Off: the picked folder
+  project level) is made in the picked folder (section 2.3). Off: the picked folder
   *is* the project folder, so `folder` / `videoFolder` is the path to it, which is `[]` when it is the
   projects folder itself (a picked folder outside every projects folder becomes one). Since 1.4, `[]`
   means "the projects folder itself" and no longer reads as "no chosen folder". The name is then
   optional; without one, the project is named after the photos' folder (or the videos').
-- Unlike Change…, a known project's folder is used as picked; it doesn't switch to that project.
+- A known project's folder is used as picked; it doesn't switch to that project.
+- The row shows where the photos and videos go ("Photos → <folder name>"), without buttons: to pick other
+  folders, choose another option and then Other… again.
 - The folders are **remembered** with the multi-day shoots (`series.json` entries with a `folder`:
   `{photos, videos, newFolder}`, absolute paths, keyed by the photos' folder). An open one is offered as
   **In “<folder name>”** with its folders and switch; it's finished, reopened and hidden after 100 days

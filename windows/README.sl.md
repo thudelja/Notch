@@ -90,10 +90,7 @@ Podokno od zgoraj navzdol prikazuje:
   postavi projekt v katero koli mapo, ne da bi spremenili nastavitve: vpraša za mapo za fotografije in
   mapo za videoposnetke (če drugo okno zaprete, ostanejo videoposnetki na običajnem mestu); **Nova mapa
   za ta projekt** v njej naredi mapo z datumom ali, izklopljena, da datoteke naravnost vanjo. Mapa se
-  zapomni kot **V „Mapa“**. Nov projekt pokaže **Fotografije → …** in
-  **Videoposnetki → …**: **Spremeni …** izbere drugo mapo za njegove fotografije ali videoposnetke,
-  Notch pa v njej naredi mapo projekta z datumom. Če izberete mapo projekta, ki ga Notch že pozna, se
-  datum doda temu projektu. Dan v večdnevnem snemanju ima gumb **Držite za zaključek**: ko je
+  zapomni kot **V „Mapa“**. Nov projekt gre v mape, nastavljene v nastavitvah. Dan v večdnevnem snemanju ima gumb **Držite za zaključek**: ko je
   snemanje končano, ga držite 1,5 sekunde.
 - **Napredek:** branje kartice, uvoz ali premik leta, vsak z gumbom za preklic.
 - **Kartice:** priključene kartice, kdaj je bila vsaka nazadnje uvožena, ter gumba **Uvozi** in **Izvrzi**.

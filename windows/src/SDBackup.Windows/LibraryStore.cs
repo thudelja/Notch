@@ -284,10 +284,6 @@ public sealed class LibraryStore
         return _locations.Values.FirstOrDefault(l => PathUtil.AreSame(l.LastKnownPath, path)) is { } known ? (known.LibraryId, "", null) : null;
     }
 
-    /// <summary>The known project whose folder is <paramref name="folder"/> (its photo or video project folder, or the folder it was created in).</summary>
-    public ProjectInfo? ProjectAtFolder(string folder) =>
-        _projects.FirstOrDefault(p => p.RootPath.Length > 0 && ProjectLayout.ProjectFolders(p).Any(f => PathUtil.AreSame(f, folder)));
-
     /// <summary>The nearest folder at or above <paramref name="folder"/> that is a projects folder (has a library.json).</summary>
     private static string? ProjectsFolderContaining(string folder)
     {

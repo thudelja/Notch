@@ -962,33 +962,7 @@ public sealed class AppModel : ObservableObject, IDisposable
 
     /// <summary>What import drafts ask this model for.</summary>
     private ImportDraftServices DraftServices =>
-        new(ChooseFolder, branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot, ChooseOther);
-
-    /// <summary>
-    /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in. The folder of a project
-    /// Notch knows adds the day to that project instead.
-    /// </summary>
-    private void ChooseFolder(ImportDraftViewModel draft, ShootDay day, FolderStructure.Branch branch)
-    {
-        string? folder;
-        PanelDialogOpen?.Invoke(true);
-        try
-        {
-            var title = branch == FolderStructure.Branch.Photo
-                ? Loc.T("Where should the photos go? Notch makes the project’s folder (date and name) inside the folder you choose.")
-                : Loc.T("Where should the videos go? Notch makes the project’s folder (date and name) inside the folder you choose.");
-            folder = _dialogs.PickFolder(title, draft.FolderFor(day, branch) ?? DefaultRoot(branch));
-        }
-        finally
-        {
-            PanelDialogOpen?.Invoke(false);
-        }
-        if (folder is null) return;
-        Library.RefreshLocations();
-        // Other…'s folders are used as picked, even a known project's folder.
-        if (!draft.ChoiceFor(day).IsOther && Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
-        else draft.SetFolder(day, branch, PathUtil.Normalize(folder));
-    }
+        new(branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot, ChooseOther);
 
     /// <summary>
     /// Import panel › Other…: asks for the folder this day's photos go in, then, if the card has videos, the videos' folder

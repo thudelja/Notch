@@ -260,16 +260,6 @@ final class LibraryStore {
         return nil
     }
 
-    /// The known project whose folder is `folder` (its photo or video project folder, or the folder
-    /// it was created in), if any.
-    func project(atFolder folder: URL) -> ProjectInfo? {
-        let path = folder.standardizedFileURL.path
-        return projects.first { project in
-            !project.rootPath.isEmpty
-                && ProjectLayout.projectFolders(for: project).contains { $0.standardizedFileURL.path == path }
-        }
-    }
-
     /// The nearest folder at or above `folder` that is a projects folder (has a library.json).
     private func projectsFolder(containing folder: URL) -> URL? {
         var current = folder.standardizedFileURL

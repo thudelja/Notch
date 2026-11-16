@@ -52,11 +52,10 @@ internal static class SelfTest
                 var flyout = new FlyoutWindow { DataContext = model, HideWhenDeactivated = false };
                 flyout.ShowNearTray();
                 Settle();
-                // Exercise the import panel: a new project whose photos go to a folder chosen with Change…, the second day in
-                // the open multi-day shoot (light) or in a new one (dark), and a camera name.
+                // Exercise the import panel: a new project in the default places, the second day in the open multi-day shoot
+                // (light), in a new one (dark) or in a remembered Other… folder (Slovenian), and a camera name.
                 var draft = model.CurrentDraft ?? throw new InvalidOperationException("The sample state has no import draft.");
                 var (first, second) = (draft.Days[0], draft.Days[1]);
-                draft.SetFolder(first.Day, FolderStructure.Branch.Photo, Path.Combine(model.Settings.ProjectsFolder, "2026", "Clients"));
                 first.ProjectName = "Ana & Jan Wedding";
                 if (dark)
                 {
@@ -67,7 +66,7 @@ internal static class SelfTest
                 {
                     // A remembered Other… folder (1.4), with its new-folder switch.
                     second.Choice = second.Options.First(option => option.Choice.Kind == DayChoiceKind.InFolder).Choice;
-                    if (!second.IsOther || second.NewFolder || second.CanChangePlaces)
+                    if (!second.IsOther || second.NewFolder || !second.ShowsPhotoPlace || second.PhotoPlaceText != Loc.F("Photos → {0}", "Clients"))
                     {
                         throw new InvalidOperationException("The remembered folder's row is wrong.");
                     }
@@ -85,9 +84,14 @@ internal static class SelfTest
                 if (!draft.IsReady) throw new InvalidOperationException($"The sample import isn't ready: {draft.BlockingReason}");
                 var switches = Descendants<CheckBox>(flyout).Count(box => box.IsVisible && box.DataContext is DayRowViewModel { IsOther: true });
                 if (switches != (language == Loc.Slovenian ? 1 : 0)) throw new InvalidOperationException($"The panel shows {switches} new-folder switch(es).");
-                if (!first.HasChosenPhotoFolder || first.PhotoPlaceText != Loc.F("Photos → {0}", "Clients") || !first.ShowsVideoPlace)
+                // A new project goes to the default places from Settings: no folder rows, and no Change… anywhere in the panel.
+                if (first.ShowsPhotoPlace || first.ShowsVideoPlace)
                 {
-                    throw new InvalidOperationException($"The new project's places are wrong: “{first.PhotoPlaceText}”, “{first.VideoPlaceText}”.");
+                    throw new InvalidOperationException("The new project shows where its files go.");
+                }
+                if (Descendants<Button>(flyout).Any(button => button.IsVisible && Equals(button.Content, Loc.T("Change…"))))
+                {
+                    throw new InvalidOperationException("The panel still has a Change… button.");
                 }
                 var holdButtons = Descendants<HoldButton>(flyout).Where(button => button.IsVisible).ToList();
                 if (holdButtons.Count != (dark ? 0 : 1)) throw new InvalidOperationException($"The panel shows {holdButtons.Count} “Hold to finish” button(s).");

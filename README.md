@@ -100,11 +100,8 @@ with, and adding a day to it still puts the files in its folder.
 2. **A notification appears**, and the menu bar icon shows a count of cards waiting.
 3. **Click the Notch icon** (an SD card with a check) in the menu bar. The Import panel lists every shoot date on the card with its
    photo, video and audio counts. For each date, choose:
-   - **New project** and type its name. Below the name, **Photos → Projects** and
-     **Videos → Projects** show where its files go. **Change…** picks another folder for the photos
-     or the videos (the other keeps its place): Notch makes the project's folder (`02.11.2026 Ana`)
-     inside the folder you choose. If you choose the folder of a project Notch already knows, the
-     date is added to that project instead, which is how you reach older projects.
+   - **New project** and type its name. It goes to your projects folder (and videos folder) from
+     Settings; to put it somewhere else, use **Other…** below.
    - **New multi-day shoot…** for a shoot over several days or cards, such as a calendar: type the
      shoot's name (`AMD Koledar 2026`) and the day's project (`Ana`). See
      [Multi-day shoots](#multi-day-shoots).

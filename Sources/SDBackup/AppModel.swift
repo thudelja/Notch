@@ -654,30 +654,6 @@ final class AppModel: ObservableObject {
         settings.videosPath = ""
     }
 
-    /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in.
-    /// The folder of a project Notch knows adds the day to that project instead.
-    func chooseFolder(for branch: FolderStructure.Branch, day: ShootDay, in draft: ImportDraft) {
-        let panel = NSOpenPanel()
-        panel.title = branch == .photo ? String(localized: "Where Should the Photos Go?") : String(localized: "Where Should the Videos Go?")
-        panel.message = String(localized: "Notch makes the project’s folder (date and name) inside the folder you choose. Choose a project’s own folder to add \(day.folderDate) to it.")
-        panel.prompt = String(localized: "Choose")
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = draft.folder(for: branch, day: day)
-            ?? (branch == .photo ? settings.destinationURL : settings.videosURL ?? settings.destinationURL)
-        AppActivation.bringToFront()
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        library.refreshLocations()
-        // Other…'s folders are used as picked, even a known project's folder.
-        if !draft.choice(for: day).isOther, let project = library.project(atFolder: url) {
-            draft.useProject(project, for: day)
-        } else {
-            draft.setFolder(url.standardizedFileURL, for: branch, day: day)
-        }
-    }
-
     /// Import panel › Other…: asks for the folder this day's photos go in, then, if the card has
     /// videos, the videos' folder (cancelling that one leaves them in their usual place). Your
     /// settings don't change.

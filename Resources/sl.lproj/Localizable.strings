@@ -41,7 +41,6 @@
 "Auto Eject" = "Samodejno izvrzi";
 "Auto Import" = "Samodejni uvoz";
 "Auto Import Is Off" = "Samodejni uvoz je izklopljen";
-"Back to the default folder" = "Nazaj na privzeto mapo";
 "Backup progress" = "Napredek kopiranja";
 "Camera" = "Fotoaparat";
 "Camera folders" = "Mape fotoaparatov";
@@ -179,7 +178,6 @@
 "Notch (test build)" = "Notch (testna različica)";
 "Notch Settings" = "Nastavitve Notch";
 "Notch couldn’t find %@ on this Mac, so the new photos weren’t opened in it. You can choose another app in Settings." = "Notch na tem Macu ni našel aplikacije %1$@, zato novih fotografij ni odprl v njej. V nastavitvah lahko izberete drugo aplikacijo.";
-"Notch makes the project’s folder (date and name) inside the folder you choose. Choose a project’s own folder to add %@ to it." = "Notch naredi mapo projekta (datum in ime) v mapi, ki jo izberete. Izberite mapo obstoječega projekta, da mu dodate %1$@.";
 "Notch only copies the photos into your projects folder." = "Notch fotografije le kopira v vašo mapo s projekti.";
 "Notch remembers which files of each card were imported, so a card you insert again only offers new files. It also remembers the folder name you gave each camera." = "Notch si zapomni, katere datoteke na vsaki kartici so bile uvožene, zato kartica, ki jo vstavite znova, ponudi le nove datoteke. Zapomni si tudi ime mape, ki ste ga dali vsakemu fotoaparatu.";
 "Notch switches to the new language when it starts again." = "Notch preklopi na nov jezik ob naslednjem zagonu.";
