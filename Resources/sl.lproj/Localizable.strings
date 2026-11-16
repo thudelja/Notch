@@ -23,7 +23,7 @@
 "A card is being read" = "Kartica se bere";
 "A folder for each camera" = "Mapa za vsak fotoaparat";
 "A folder level has no name." = "Raven mape nima imena.";
-"A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Other…” are listed here too." = "Večdnevno snemanje (na primer koledar) ima vse svoje projekte v eni mapi. Začnete ga v podoknu za uvoz z „Novo večdnevno snemanje …“. Tu so navedene tudi mape, ki jih tam izberete z „Drugo …“.";
+"A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Choose a project…” are listed here too." = "Večdnevno snemanje (na primer koledar) ima vse svoje projekte v eni mapi. Začnete ga v podoknu za uvoz z „Novo večdnevno snemanje …“. Tu so navedene tudi mape, ki jih tam izberete z „Izberite projekt …“.";
 "A photo" = "Fotografija";
 "A video" = "Videoposnetek";
 "A year is being moved" = "Leto se premika";
@@ -193,7 +193,6 @@
 "Open shoots and folders appear in the import panel as “New in …” and “In …”. One not used for 100 days leaves the panel; reopen it here." = "Odprta snemanja in mape so v podoknu za uvoz prikazani kot „Nov v …“ in „V …“. Kar 100 dni ne uporabite, izgine iz podokna; tu lahko znova odprete.";
 "Open · last used %@" = "Odprto · nazadnje uporabljeno %1$@";
 "Order" = "Vrstni red";
-"Other…" = "Drugo …";
 "Photo" = "Foto";
 "Photo Folder" = "Mapa za fotografije";
 "Photo folder" = "Mapa za fotografije";

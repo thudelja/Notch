@@ -62,7 +62,7 @@
                 <StackPanel>
                     <TextBlock Style="{StaticResource WrappedCaptionText}"
                                Visibility="{Binding HasShoots, Converter={StaticResource BoolToCollapsed}}"
-                               Text="{l:T 'A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Other…” are listed here too.'}" />
+                               Text="{l:T 'A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Choose a project…” are listed here too.'}" />
                     <ItemsControl ItemsSource="{Binding Shoots}" Focusable="False">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

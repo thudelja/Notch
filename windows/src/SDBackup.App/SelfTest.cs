@@ -75,7 +75,10 @@ internal static class SelfTest
                 {
                     second.Choice = second.Options.First(option => option.Choice.Kind == DayChoiceKind.NewInShoot).Choice;
                 }
-                if (first.Options.All(option => option.Choice != DayChoice.Other)) throw new InvalidOperationException("Other… isn't offered.");
+                if (first.Options.FirstOrDefault()?.Choice != DayChoice.Other || first.Options.Any(option => option.Choice == DayChoice.Unassigned))
+                {
+                    throw new InvalidOperationException("“Choose a project…” isn't the first entry, or the empty choice is still listed.");
+                }
                 second.ProjectName = "Maja";
                 draft.Cameras[0].Name = "R5 II";
                 Settle();
@@ -110,7 +113,7 @@ internal static class SelfTest
                 {
                     throw new InvalidOperationException("An image in the panel (the footer logo) didn't load.");
                 }
-                var blank = Descendants<ComboBox>(flyout).Count(box => box.SelectedItem is null);
+                var blank = Descendants<ComboBox>(flyout).Count(box => box.SelectedItem is null && box.DataContext is not DayRowViewModel { IsUnassigned: true });
                 if (blank > 0) throw new InvalidOperationException($"{blank} project picker(s) show no selection.");
                 var workArea = SystemParameters.WorkArea;
                 if (flyout.ActualHeight > workArea.Height + 1 || flyout.Top < workArea.Top - 1)

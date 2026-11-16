@@ -100,20 +100,21 @@ with, and adding a day to it still puts the files in its folder.
 2. **A notification appears**, and the menu bar icon shows a count of cards waiting.
 3. **Click the Notch icon** (an SD card with a check) in the menu bar. The Import panel lists every shoot date on the card with its
    photo, video and audio counts. For each date, choose:
+   - **Choose a project…** (the first entry): put the project in any folder, without changing your
+     settings. Notch asks for the photos' folder and, if the card has videos, the videos' folder (cancel
+     to keep them in their usual place). With **New folder for this project** on, it makes
+     `02.11.2026 Name/R5/…` in the folder you picked (videos: `02.11.2026 Name/Media/R5/…`); off, the
+     files go straight in (`R5/…`, `Media/R5/…`) and the name is optional. Choose it again to pick
+     other folders (on Windows, choose another entry first). Notch remembers the folder: next time it's offered as **In “Folder”**, and it's
+     finished and listed like a [multi-day shoot](#multi-day-shoots).
    - **New project** and type its name. It goes to your projects folder (and videos folder) from
-     Settings; to put it somewhere else, use **Other…** below.
+     Settings; to put it somewhere else, use **Choose a project…** above.
    - **New multi-day shoot…** for a shoot over several days or cards, such as a calendar: type the
      shoot's name (`AMD Koledar 2026`) and the day's project (`Ana`). See
      [Multi-day shoots](#multi-day-shoots).
    - **New in “AMD Koledar 2026”**: the next day of an open multi-day shoot.
    - **Same as** another new project on this card
    - one of your **last two projects**
-   - **Other…**: put the project in any folder, without changing your settings. Notch asks for the
-     photos' folder and, if the card has videos, the videos' folder (cancel to keep them in their usual
-     place). With **New folder for this project** on, it makes `02.11.2026 Name/R5/…` in the folder you
-     picked (videos: `02.11.2026 Name/Media/R5/…`); off, the files go straight in (`R5/…`,
-     `Media/R5/…`) and the name is optional. Notch remembers the folder: next time it's offered as
-     **In “Folder”**, and it's finished and listed like a [multi-day shoot](#multi-day-shoots).
    - **Skip for now**
 
    By default, every date goes into one new project. Below the dates, check the **camera folder

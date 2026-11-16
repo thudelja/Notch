@@ -280,13 +280,25 @@ private struct DayRow: View {
                     .lineLimit(1)
             }
 
-            Picker("Project for \(summary.day.folderDate)", selection: choice) {
+            // A menu rather than a picker: "Choose a project…" opens the folder pickers again when it's
+            // already chosen, and a day without a project shows it as a greyed hint.
+            Menu {
                 ForEach(draft.options(for: summary.day)) { option in
-                    Text(verbatim: option.title).tag(option.choice)
+                    Button {
+                        choose(option.choice)
+                    } label: {
+                        if option.choice == draft.choice(for: summary.day) {
+                            Label(option.title, systemImage: "checkmark")
+                        } else {
+                            Text(verbatim: option.title)
+                        }
+                    }
                 }
+            } label: {
+                Text(verbatim: currentTitle)
+                    .foregroundStyle(draft.choice(for: summary.day) == .unassigned ? .secondary : .primary)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
+            .accessibilityLabel(Text("Project for \(summary.day.folderDate)"))
 
             switch draft.choice(for: summary.day) {
             case .newShoot:
@@ -377,18 +389,20 @@ private struct DayRow: View {
         return parts.joined(separator: " · ")
     }
 
-    private var choice: Binding<DayChoice> {
-        Binding(
-            get: { draft.choice(for: summary.day) },
-            set: { [model, draft, day = summary.day] newChoice in
-                let wasOther = draft.choice(for: day) == .other
-                draft.setChoice(newChoice, for: day)
-                // Other… asks for its folders, once the menu has closed.
-                if newChoice == .other, !wasOther {
-                    DispatchQueue.main.async { model.chooseOther(for: day, in: draft) }
-                }
-            }
-        )
+    /// The day's choice as the menu shows it; "Choose a project…" (greyed) while there's none.
+    private var currentTitle: String {
+        let current = draft.choice(for: summary.day)
+        guard current != .unassigned else { return String(localized: "Choose a project…") }
+        return draft.options(for: summary.day).first { $0.choice == current }?.title ?? String(localized: "Choose a project…")
+    }
+
+    private func choose(_ newChoice: DayChoice) {
+        let day = summary.day
+        draft.setChoice(newChoice, for: day)
+        // "Choose a project…" asks for its folders (again, if it was already chosen), once the menu has closed.
+        if newChoice == .other {
+            DispatchQueue.main.async { [model, draft] in model.chooseOther(for: day, in: draft) }
+        }
     }
 
     private var newFolder: Binding<Bool> {

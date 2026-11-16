@@ -302,7 +302,8 @@ public sealed class ImportDraftViewModel : ObservableObject
     {
         var options = new List<(DayChoice Choice, string Title)>
         {
-            (DayChoice.Unassigned, Loc.T("Choose a project…")),
+            // Picks folders for the project anywhere (Other); a day without a project shows it as a hint instead.
+            (DayChoice.Other, Loc.T("Choose a project…")),
             (DayChoice.NewProject, Loc.T("New project")),
         };
         foreach (var shoot in OpenShoots)
@@ -325,7 +326,6 @@ public sealed class ImportDraftViewModel : ObservableObject
                 ? $"{project.Name} · {project.StartDay.FolderDate}"
                 : Loc.F("{0} · {1} (drive not connected)", project.Name, project.StartDay.FolderDate)));
         }
-        options.Add((DayChoice.Other, Loc.T("Other…")));
         options.Add((DayChoice.Skip, Loc.T("Skip for now")));
         return options;
     }
@@ -504,8 +504,11 @@ public sealed class DayRowViewModel : ObservableObject
     /// <summary>A plain new project, in the default places from Settings.</summary>
     public bool IsPlainNew => _owner.ChoiceFor(Day).Kind == DayChoiceKind.NewProject;
 
-    /// <summary>Other…, picked now or remembered: the folders it goes to, and a new folder or not.</summary>
+    /// <summary>"Choose a project…" (Other), picked now or remembered: the folders it goes to, and a new folder or not.</summary>
     public bool IsOther => _owner.ChoiceFor(Day).IsOther;
+
+    /// <summary>No project yet: the picker shows "Choose a project…" as a hint.</summary>
+    public bool IsUnassigned => _owner.ChoiceFor(Day).Kind == DayChoiceKind.Unassigned;
 
     /// <summary>The row asks for the new project's name (a new shoot asks for it with the shoot's name).</summary>
     public bool AsksForName => IsPlainNew || IsInShoot || IsOther;
@@ -598,7 +601,7 @@ public sealed class DayRowViewModel : ObservableObject
         foreach (var name in new[]
                  {
                      nameof(Choice), nameof(IsNewProject), nameof(IsNewShoot), nameof(IsInShoot), nameof(IsPlainNew), nameof(AsksForName),
-                     nameof(IsOther), nameof(NameLabel), nameof(NewFolder), nameof(ShowsFinish),
+                     nameof(IsOther), nameof(IsUnassigned), nameof(NameLabel), nameof(NewFolder), nameof(ShowsFinish),
                      nameof(ShowsPhotoPlace), nameof(ShowsVideoPlace), nameof(PhotoPlaceText), nameof(VideoPlaceText),
                      nameof(FinishShootTitle),
                      nameof(ShootFinishedText), nameof(ShootFinished), nameof(CanFinishShoot),

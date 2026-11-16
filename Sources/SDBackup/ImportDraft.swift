@@ -187,7 +187,8 @@ final class ImportDraft: ObservableObject, Identifiable {
 
     func options(for day: ShootDay) -> [ChoiceOption] {
         var options = [
-            ChoiceOption(choice: .unassigned, title: String(localized: "Choose a project…")),
+            // Picks folders for the project anywhere (Other); a day without a project shows it as a hint instead.
+            ChoiceOption(choice: .other, title: String(localized: "Choose a project…")),
             ChoiceOption(choice: .newProject, title: String(localized: "New project")),
         ]
         for shoot in openShoots {
@@ -205,7 +206,6 @@ final class ImportDraft: ObservableObject, Identifiable {
                 : String(localized: "\(project.name) · \(project.startDay.folderDate) (drive not connected)")
             options.append(ChoiceOption(choice: .existing(project.id), title: title))
         }
-        options.append(ChoiceOption(choice: .other, title: String(localized: "Other…")))
         options.append(ChoiceOption(choice: .skip, title: String(localized: "Skip for now")))
         return options
     }

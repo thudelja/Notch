@@ -58,7 +58,7 @@ struct SettingsView: View {
 
             Section("Multi-day shoots and folders") {
                 if shoots.all.isEmpty {
-                    Text("A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Other…” are listed here too.")
+                    Text("A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Choose a project…” are listed here too.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

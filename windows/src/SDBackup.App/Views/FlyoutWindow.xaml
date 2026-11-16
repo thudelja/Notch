@@ -109,16 +109,23 @@
                                                                Text="{Binding Weekday}" />
                                                 </StackPanel>
                                             </DockPanel>
-                                            <ComboBox Style="{StaticResource PickerBox}" Margin="0,6,0,0" MinHeight="32"
-                                                      ItemsSource="{Binding Options}"
-                                                      SelectedValuePath="Choice"
-                                                      SelectedValue="{Binding Choice, Mode=TwoWay}">
-                                                <ComboBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                                    </DataTemplate>
-                                                </ComboBox.ItemTemplate>
-                                            </ComboBox>
+                                            <Grid Margin="0,6,0,0">
+                                                <ComboBox Style="{StaticResource PickerBox}" MinHeight="32"
+                                                          AutomationProperties.Name="{l:T 'Choose a project…'}"
+                                                          ItemsSource="{Binding Options}"
+                                                          SelectedValuePath="Choice"
+                                                          SelectedValue="{Binding Choice, Mode=TwoWay}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <!-- No project yet: a greyed hint, not an entry. -->
+                                                <TextBlock Style="{StaticResource BodyText}" Margin="11,0,30,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                                           Foreground="{DynamicResource TextTertiaryBrush}" Text="{l:T 'Choose a project…'}"
+                                                           Visibility="{Binding IsUnassigned, Converter={StaticResource BoolToVisible}}" />
+                                            </Grid>
                                             <!-- A new multi-day shoot: its name, and this day's project in it -->
                                             <StackPanel Margin="0,8,0,0" Visibility="{Binding IsNewShoot, Converter={StaticResource BoolToVisible}}">
                                                 <TextBlock Style="{StaticResource SmallText}" Text="{l:T 'Multi-day shoot, e.g. AMD Koledar 2026'}" Margin="0,0,0,4" />

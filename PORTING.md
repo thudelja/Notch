@@ -175,7 +175,7 @@ empty means "same as photos"). It is a projects folder like any other, with its 
 
 In 1.2, the import panel's **New project in a folder…** made the project folder inside a folder the
 user picked; in 1.3 a new project's **Change…** did the same for its photos or its videos alone; since
-1.4.1, **Other…** does it (section 2.7), and a new project always goes to its default places. The project folder is `<picked folder>/<project folder name>`, named by the structure's
+1.4.1, **Choose a project…** does it (section 2.7), and a new project always goes to its default places. The project folder is `<picked folder>/<project folder name>`, named by the structure's
 project level (section 2.1). The project stores `folder` (photos) or `videoFolder` (videos, 1.3): the
 path of that project folder below its projects folder, as components, e.g.
 `["2026", "AMD Koledar 2026", "02.11.2026 Ana"]`.
@@ -190,7 +190,7 @@ path of that project folder below its projects folder, as components, e.g.
   empty). In 1.2 a chosen folder took the videos too (`folder` for both); a 1.2 project keeps that
   (section 2.4).
 - (1.2 and 1.3:) if the picked folder was the photo or video project folder of a known project, the day
-  was added to that project instead. Other… uses a folder as picked.
+  was added to that project instead. Choose a project… uses a folder as picked.
 
 ### 2.4 Photos and videos each have a destination (1.3)
 
@@ -204,7 +204,7 @@ Photos and videos each have a **destination**: a projects folder and a structure
   it keeps them apart (`2026/Photo/…` and `2026/Video/…`). When they go to different projects
   folders, a new project leaves it out of both (`FolderStructure.withoutMediaType`).
 - **Per new project:** a new project goes to these defaults. (In 1.3 its row had **Change…** for the
-  photos and the videos; since 1.4.1 the import panel has no Change…: **Other…**, section 2.7, picks
+  photos and the videos; since 1.4.1 the import panel has no Change…: **Choose a project…**, section 2.7, picks
   other folders, and Settings changes the defaults.)
 - **A new project stores** `structure` and `videoStructure` (both always, since 1.3, with the
   Photo / Video level removed as above), `libraryID` and `videoLibraryID` (when different),
@@ -258,9 +258,12 @@ Windows: the display language), or Settings › General › Language (Mac `langu
 - **Card IDs and other stored keys are never translated.**
 - The log stays in English.
 
-### 2.7 Other… (1.4)
+### 2.7 Choose a project… (1.4)
 
-**Other…** puts a new project in folders the user picks, without changing any setting.
+**Choose a project…** (the first entry of a day's list; "Other…" at the end of the list in 1.4.0) puts a
+new project in folders the user picks, without changing any setting. A day without a project (for
+example one whose "same as" day changed) shows "Choose a project…" as a greyed hint; that empty choice
+isn't an entry of the list.
 
 - Picking it opens a folder picker for the photos (if the card has photos), then one for the videos (if
   it has videos). Closing the first goes back to the day's previous choice; closing the videos' one
@@ -272,8 +275,8 @@ Windows: the display language), or Settings › General › Language (Mac `langu
   means "the projects folder itself" and no longer reads as "no chosen folder". The name is then
   optional; without one, the project is named after the photos' folder (or the videos').
 - A known project's folder is used as picked; it doesn't switch to that project.
-- The row shows where the photos and videos go ("Photos → <folder name>"), without buttons: to pick other
-  folders, choose another option and then Other… again.
+- The row shows where the photos and videos go ("Photos → <folder name>"), without buttons. On the Mac,
+  choosing "Choose a project…" again opens the pickers again; on Windows, choose another entry first.
 - The folders are **remembered** with the multi-day shoots (`series.json` entries with a `folder`:
   `{photos, videos, newFolder}`, absolute paths, keyed by the photos' folder). An open one is offered as
   **In “<folder name>”** with its folders and switch; it's finished, reopened and hidden after 100 days
@@ -373,7 +376,7 @@ per card for files without camera info.
    - **New multi-day shoot…** with the shoot's name and the day's project name.
    - **Same as** another day's new project on this card (of any kind).
    - One of the **2 most recently used projects**.
-   - **Other…** (1.4, section 2.7) and **In “<folder>”** for each remembered Other… folder.
+   - **Choose a project…** (first; section 2.7) and **In “<folder>”** for each remembered folder.
    - **Skip for now**: not imported, offered again next time.
 
    Below the days, the user can edit the **camera folder names**.
