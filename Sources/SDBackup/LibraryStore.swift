@@ -203,6 +203,8 @@ final class LibraryStore {
         var root: URL
         /// A folder the user chose instead: the project folder is made inside it.
         var chosenFolder: URL?
+        /// Without it (Other…, 1.4), the chosen folder is the project folder.
+        var newFolder = true
     }
 
     /// The existing project with this name and start day in these places, or a new one. Photos and
@@ -245,7 +247,7 @@ final class LibraryStore {
                   let id = library(at: root)
             else { return nil }
             let relative = Array(chosen.pathComponents.dropFirst(root.pathComponents.count))
-            return (id, root.path, relative + [projectFolderName])
+            return (id, root.path, place.newFolder ? relative + [projectFolderName] : relative)
         }
         let root = place.root.standardizedFileURL
         if let id = library(at: root) {

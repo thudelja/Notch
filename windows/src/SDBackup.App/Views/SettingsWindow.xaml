@@ -57,12 +57,12 @@
             </Border>
 
             <!-- ============================================================ Multi-day shoots -->
-            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Multi-day shoots'}" />
+            <TextBlock Style="{StaticResource SectionTitle}" Text="{l:T 'Multi-day shoots and folders'}" />
             <Border Style="{StaticResource Card}" Margin="0,0,0,20">
                 <StackPanel>
                     <TextBlock Style="{StaticResource WrappedCaptionText}"
                                Visibility="{Binding HasShoots, Converter={StaticResource BoolToCollapsed}}"
-                               Text="{l:T 'A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”.'}" />
+                               Text="{l:T 'A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Other…” are listed here too.'}" />
                     <ItemsControl ItemsSource="{Binding Shoots}" Focusable="False">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -77,6 +77,8 @@
                                     </Grid>
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock Style="{StaticResource BodyText}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="{Binding Name}" />
+                                        <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Detail}" ToolTip="{Binding Detail}"
+                                                   Visibility="{Binding Detail, Converter={StaticResource TextToVisible}}" />
                                         <TextBlock Style="{StaticResource CaptionText}" Text="{Binding Status}" />
                                     </StackPanel>
                                 </DockPanel>
@@ -85,7 +87,7 @@
                     </ItemsControl>
                     <TextBlock Style="{StaticResource WrappedCaptionText}"
                                Visibility="{Binding HasShoots, Converter={StaticResource BoolToVisible}}"
-                               Text="{l:T 'Open shoots appear in the import panel as “New in …”. A shoot not used for 100 days leaves the panel; reopen it here.'}" />
+                               Text="{l:T 'Open shoots and folders appear in the import panel as “New in …” and “In …”. One not used for 100 days leaves the panel; reopen it here.'}" />
                 </StackPanel>
             </Border>
 

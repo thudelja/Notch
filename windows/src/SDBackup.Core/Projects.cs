@@ -21,14 +21,14 @@ public sealed record ProjectInfo
 
     /// <summary>
     /// For photos put in a folder the user chose: the project folder's path below its projects folder, e.g.
-    /// ["2026", "Clients", "02.11.2026 Ana"]. Null for photos laid out by the structure. (Projects made before 1.3 put
-    /// their videos there too.)
+    /// ["2026", "Clients", "02.11.2026 Ana"]; [] when the project folder is the projects folder itself (Other… without a
+    /// new folder, 1.4). Null for photos laid out by the structure. (Projects made before 1.3 put their videos there too.)
     /// </summary>
     [JsonPropertyName("folder")]
     public IReadOnlyList<string>? Folder
     {
         get => _folder;
-        init => _folder = value is { Count: > 0 } ? value.ToList() : null;
+        init => _folder = value?.ToList();
     }
 
     [JsonPropertyName("id")] public Guid Id { get; init; } = Guid.NewGuid();
@@ -66,7 +66,7 @@ public sealed record ProjectInfo
     public IReadOnlyList<string>? VideoFolder
     {
         get => _videoFolder;
-        init => _videoFolder = value is { Count: > 0 } ? value.ToList() : null;
+        init => _videoFolder = value?.ToList();
     }
 
     /// <summary>The projects folder holding this project's videos, when they go to another folder than the photos. Null: the same as <see cref="LibraryId"/>.</summary>
@@ -124,15 +124,19 @@ public sealed record ProjectInfo
         && Name == other.Name
         && StartDay == other.StartDay
         && Equals(Structure, other.Structure)
-        && (Folder ?? []).SequenceEqual(other.Folder ?? [], StringComparer.Ordinal)
+        && SameFolder(Folder, other.Folder)
         && VideoLibraryId == other.VideoLibraryId
         && Equals(VideoStructure, other.VideoStructure)
-        && (VideoFolder ?? []).SequenceEqual(other.VideoFolder ?? [], StringComparer.Ordinal)
+        && SameFolder(VideoFolder, other.VideoFolder)
         && Series == other.Series
         && RootPath == other.RootPath
         && VideoRootPath == other.VideoRootPath;
 
     public override int GetHashCode() => HashCode.Combine(Id, LibraryId, Name, StartDay, RootPath);
+
+    /// <summary>Chosen folders by their items; no chosen folder (null) differs from the projects folder itself ([]).</summary>
+    public static bool SameFolder(IReadOnlyList<string>? a, IReadOnlyList<string>? b, IEqualityComparer<string>? comparer = null) =>
+        a is null ? b is null : b is not null && a.SequenceEqual(b, comparer ?? StringComparer.Ordinal);
 }
 
 /// <summary>Everything needed to copy a card's files into their projects, plus the video project skeletons and empty Exported folders.</summary>

@@ -220,8 +220,12 @@ public sealed class LibraryStore
 
     public ProjectInfo? Project(Guid id) => _projects.FirstOrDefault(p => p.Id == id);
 
-    /// <summary>Where one kind of a new project's files goes: a projects folder laid out by its structure, or a folder the user chose (the project folder is made inside it).</summary>
-    public sealed record Place(string Root, string? ChosenFolder = null);
+    /// <summary>
+    /// Where one kind of a new project's files goes: a projects folder laid out by its structure, or a folder the user chose.
+    /// In a chosen folder the project folder ("date name") is made inside it, or, without <paramref name="NewFolder"/>
+    /// (Other…, 1.4), the chosen folder is the project folder.
+    /// </summary>
+    public sealed record Place(string Root, string? ChosenFolder = null, bool NewFolder = true);
 
     /// <summary>
     /// The existing project with this name and start day in these places, or a new one. Photos and videos each follow their
@@ -246,7 +250,7 @@ public sealed class LibraryStore
         }
         series = string.IsNullOrWhiteSpace(series) ? null : series.Trim();
         var existing = _projects.FirstOrDefault(p =>
-            p.LibraryId == photo.Id && (p.Folder ?? []).SequenceEqual(photo.Folder ?? [], PathUtil.Comparer) && p.StartDay == startDay
+            p.LibraryId == photo.Id && ProjectInfo.SameFolder(p.Folder, photo.Folder, PathUtil.Comparer) && p.StartDay == startDay
             && string.Equals(p.Name, trimmed, StringComparison.OrdinalIgnoreCase)
             && string.Equals(p.Series ?? "", series ?? "", StringComparison.OrdinalIgnoreCase));
         if (existing is not null) return existing with { RootPath = photo.Path };
@@ -272,7 +276,7 @@ public sealed class LibraryStore
             if (root is null || Library(root) is not Guid id) return null;
             var relative = Path.GetRelativePath(root, chosen);
             string[] below = relative == "." ? [] : relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-            return (id, root, [.. below, projectFolderName]);
+            return (id, root, place.NewFolder ? [.. below, projectFolderName] : below);
         }
         var path = PathUtil.Normalize(place.Root);
         if (Library(path) is Guid libraryId) return (libraryId, path, null);

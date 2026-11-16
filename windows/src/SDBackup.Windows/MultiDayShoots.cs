@@ -10,12 +10,31 @@ using SDBackup.Core;
 namespace SDBackup.Windows;
 
 /// <summary>
+/// Folders picked with Other… in the import panel (1.4): a project's photos go into <see cref="Photos"/> and its videos into
+/// <see cref="Videos"/> (null: their usual place), each in a new "date name" folder or, without <see cref="NewFolder"/>,
+/// straight into the folder. Absolute paths: remembered on this PC only.
+/// </summary>
+public sealed record OtherFolder(
+    [property: JsonPropertyName("photos")] string? Photos,
+    [property: JsonPropertyName("videos")] string? Videos,
+    [property: JsonPropertyName("newFolder")] bool NewFolder = true)
+{
+    /// <summary>The folder's name, as the panel shows it: the photos' folder, or the videos' when there are no photos.</summary>
+    [JsonIgnore] public string Name => Format.FolderName(Photos ?? Videos ?? "");
+
+    /// <summary>Remembered by its photos' folder (or its videos', without photos).</summary>
+    public bool SamePlace(OtherFolder other) => PathUtil.AreSame(Photos ?? Videos ?? "", other.Photos ?? other.Videos ?? "");
+}
+
+/// <summary>
 /// A shoot over several days or cards, e.g. a calendar: its folder ("AMD Koledar 2026") takes the project folder's place in
-/// the folder structures, and each day's project goes inside it.
+/// the folder structures, and each day's project goes inside it. With <see cref="Folder"/>, a remembered Other… folder
+/// instead (1.4), offered and finished the same way.
 /// </summary>
 public sealed record MultiDayShoot
 {
     [JsonPropertyName("finished")] public bool Finished { get; init; }
+    [JsonPropertyName("folder")] public OtherFolder? Folder { get; init; }
     [JsonPropertyName("id")] public Guid Id { get; init; } = Guid.NewGuid();
     [JsonPropertyName("lastUsed")] public DateTime LastUsed { get; init; } = DateTime.UtcNow;
     [JsonPropertyName("name")] public string Name { get; init; } = "";
@@ -58,7 +77,7 @@ public sealed class MultiDayShootStore
     public MultiDayShoot Start(string name)
     {
         var trimmed = name.Trim();
-        var index = _all.FindIndex(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+        var index = _all.FindIndex(s => s.Folder is null && string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
         if (index >= 0)
         {
             _all[index] = _all[index] with { Finished = false, LastUsed = Now };
@@ -73,7 +92,24 @@ public sealed class MultiDayShootStore
     }
 
     public void MarkUsed(string name) =>
-        Update(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase), s => s with { LastUsed = Now });
+        Update(s => s.Folder is null && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase), s => s with { LastUsed = Now });
+
+    /// <summary>Remembers folders picked with Other… (reopened and updated if they were remembered before).</summary>
+    public MultiDayShoot Remember(OtherFolder folder)
+    {
+        var index = _all.FindIndex(s => s.Folder is { } known && known.SamePlace(folder));
+        if (index >= 0)
+        {
+            _all[index] = _all[index] with { Folder = folder, Name = folder.Name, Finished = false, LastUsed = Now };
+        }
+        else
+        {
+            _all.Add(new MultiDayShoot { Name = folder.Name, Folder = folder, Started = Now, LastUsed = Now });
+            index = _all.Count - 1;
+        }
+        Save();
+        return _all[index];
+    }
 
     public void Finish(Guid id) => Update(s => s.Id == id, s => s with { Finished = true });
 
@@ -113,6 +149,12 @@ public sealed class MultiDayShootStore
 public sealed class ShootViewModel(MultiDayShoot shoot, ICommand finish, ICommand reopen)
 {
     public string Name => shoot.Name;
+
+    /// <summary>For a remembered Other… folder: where its photos and videos go.</summary>
+    public string Detail => shoot.Folder is { } folder
+        ? string.Join(" · ", new[] { folder.Photos, folder.Videos }.Where(path => path is not null))
+        : "";
+
     public bool IsOpen => shoot.IsOpen;
     public bool IsClosed => !shoot.IsOpen;
 

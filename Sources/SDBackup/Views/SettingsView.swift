@@ -56,9 +56,9 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Multi-day shoots") {
+            Section("Multi-day shoots and folders") {
                 if shoots.all.isEmpty {
-                    Text("A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”.")
+                    Text("A multi-day shoot (for example a calendar) keeps all its projects in one folder. Start one in the import panel with “New multi-day shoot…”. Folders you pick there with “Other…” are listed here too.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -67,6 +67,15 @@ struct SettingsView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(verbatim: shoot.name)
+                                if let folder = shoot.folder {
+                                    // Where a remembered Other… folder's photos and videos go.
+                                    Text(verbatim: [folder.photos, folder.videos].compactMap { $0 }
+                                        .map { ($0 as NSString).abbreviatingWithTildeInPath }.joined(separator: " · "))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
                                 Text(shootStatus(shoot))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -82,7 +91,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    Text("Open shoots appear in the import panel as “New in …”. A shoot not used for 100 days leaves the panel; reopen it here.")
+                    Text("Open shoots and folders appear in the import panel as “New in …” and “In …”. One not used for 100 days leaves the panel; reopen it here.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

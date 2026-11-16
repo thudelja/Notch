@@ -85,8 +85,12 @@ Podokno od zgoraj navzdol prikazuje:
 - **Ploščice hitrih nastavitev:** Samodejni uvoz, Preveri in Samodejno izvrzi. Pod njimi so gumbi, ki
   odprejo mapo s projekti, nastavitve in dnevnik.
 - **Uvoz:** vrstica za vsak datum snemanja z izbiro projekta (Nov projekt, Novo večdnevno snemanje …,
-  Nov v „…“ za vsako odprto večdnevno snemanje, Enako kot drug nov projekt, zadnja dva projekta ali
-  Zaenkrat preskoči) ter imena map fotoaparatov. Nov projekt pokaže **Fotografije → …** in
+  Nov v „…“ za vsako odprto večdnevno snemanje, V „…“ za vsako zapomnjeno mapo, Enako kot drug nov
+  projekt, zadnja dva projekta, Drugo … ali Zaenkrat preskoči) ter imena map fotoaparatov. **Drugo …**
+  postavi projekt v katero koli mapo, ne da bi spremenili nastavitve: vpraša za mapo za fotografije in
+  mapo za videoposnetke (če drugo okno zaprete, ostanejo videoposnetki na običajnem mestu); **Nova mapa
+  za ta projekt** v njej naredi mapo z datumom ali, izklopljena, da datoteke naravnost vanjo. Mapa se
+  zapomni kot **V „Mapa“**. Nov projekt pokaže **Fotografije → …** in
   **Videoposnetki → …**: **Spremeni …** izbere drugo mapo za njegove fotografije ali videoposnetke,
   Notch pa v njej naredi mapo projekta z datumom. Če izberete mapo projekta, ki ga Notch že pozna, se
   datum doda temu projektu. Dan v večdnevnem snemanju ima gumb **Držite za zaključek**: ko je

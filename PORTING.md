@@ -258,6 +258,25 @@ Windows: the display language), or Settings › General › Language (Mac `langu
 - **Card IDs and other stored keys are never translated.**
 - The log stays in English.
 
+### 2.7 Other… (1.4)
+
+**Other…** puts a new project in folders the user picks, without changing any setting.
+
+- Picking it opens a folder picker for the photos (if the card has photos), then one for the videos (if
+  it has videos). Closing the first goes back to the day's previous choice; closing the videos' one
+  leaves the videos at their default destination (section 2.4).
+- **New folder for this project** (on by default): the project folder ("date name", by the structure's
+  project level) is made in the picked folder, as with Change… (section 2.3). Off: the picked folder
+  *is* the project folder, so `folder` / `videoFolder` is the path to it, which is `[]` when it is the
+  projects folder itself (a picked folder outside every projects folder becomes one). Since 1.4, `[]`
+  means "the projects folder itself" and no longer reads as "no chosen folder". The name is then
+  optional; without one, the project is named after the photos' folder (or the videos').
+- Unlike Change…, a known project's folder is used as picked; it doesn't switch to that project.
+- The folders are **remembered** with the multi-day shoots (`series.json` entries with a `folder`:
+  `{photos, videos, newFolder}`, absolute paths, keyed by the photos' folder). An open one is offered as
+  **In “<folder name>”** with its folders and switch; it's finished, reopened and hidden after 100 days
+  like a shoot, and Settings lists it with its paths.
+
 ## 3. Reading a card
 
 ### 3.1 Which volumes are cards
@@ -352,6 +371,7 @@ per card for files without camera info.
    - **New multi-day shoot…** with the shoot's name and the day's project name.
    - **Same as** another day's new project on this card (of any kind).
    - One of the **2 most recently used projects**.
+   - **Other…** (1.4, section 2.7) and **In “<folder>”** for each remembered Other… folder.
    - **Skip for now**: not imported, offered again next time.
 
    Below the days, the user can edit the **camera folder names**.

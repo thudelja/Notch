@@ -194,6 +194,33 @@ public sealed class DestinationTests : Sandbox
     }
 
     [Fact]
+    public void AChosenFolderCanBeTheProjectFolderItself()
+    {
+        // Other… without a new folder (1.4): the files go straight into the folders the user picked, here outside every
+        // projects folder, so each picked folder is its own projects folder and the project's folder path is empty.
+        var project = Project() with
+        {
+            RootPath = _projects, Folder = [],
+            VideoLibraryId = Guid.NewGuid(), VideoRootPath = _videos, VideoFolder = [],
+        };
+        Assert.Equal(Under(_projects, "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, project, "R5"));
+        Assert.Equal(Under(_videos, "Media", "R5"), ProjectLayout.TargetDirectory(MediaKind.Video, project, "R5"));
+        Assert.Equal([PathUtil.Normalize(_projects), PathUtil.Normalize(_videos)], ProjectLayout.ProjectFolders(project).Select(PathUtil.Normalize));
+
+        // No chosen folder (null) is a different project from one in the projects folder itself ([]).
+        Assert.NotEqual(project with { Folder = null }, project);
+
+        // Saved and read back, the empty path stays empty rather than becoming "laid out by the structure".
+        var libraryId = Guid.NewGuid();
+        LibraryManifest.Create(libraryId, [project with { LibraryId = libraryId }]).Write(_projects);
+        Assert.Contains("\"folder\": []", File.ReadAllText(LibraryManifest.PathIn(_projects)));
+        var read = LibraryManifest.Read(_projects)!.Projects.Single();
+        Assert.NotNull(read.Folder);
+        Assert.Empty(read.Folder!);
+        Assert.Equal(Under(_projects, "R5"), ProjectLayout.TargetDirectory(MediaKind.Photo, read with { RootPath = _projects }, "R5"));
+    }
+
+    [Fact]
     public void ProjectsFromBefore13KeepTheirVideosWithThePhotos()
     {
         // 1.2: a project in a chosen folder put its videos there too; no video structure was saved.

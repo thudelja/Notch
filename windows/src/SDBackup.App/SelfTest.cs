@@ -63,16 +63,28 @@ internal static class SelfTest
                     second.Choice = DayChoice.NewShoot;
                     second.ShootName = "AMD Koledar 2027";
                 }
+                else if (language == Loc.Slovenian)
+                {
+                    // A remembered Other… folder (1.4), with its new-folder switch.
+                    second.Choice = second.Options.First(option => option.Choice.Kind == DayChoiceKind.InFolder).Choice;
+                    if (!second.IsOther || second.NewFolder || second.CanChangePlaces)
+                    {
+                        throw new InvalidOperationException("The remembered folder's row is wrong.");
+                    }
+                }
                 else
                 {
                     second.Choice = second.Options.First(option => option.Choice.Kind == DayChoiceKind.NewInShoot).Choice;
                 }
+                if (first.Options.All(option => option.Choice != DayChoice.Other)) throw new InvalidOperationException("Other… isn't offered.");
                 second.ProjectName = "Maja";
                 draft.Cameras[0].Name = "R5 II";
                 Settle();
                 Save(flyout, Path.Combine(folder, $"panel-{theme}.png"));
                 report.Add($"Panel ({theme}): {flyout.ActualWidth:0}×{flyout.ActualHeight:0}, import ready: {draft.IsReady}");
                 if (!draft.IsReady) throw new InvalidOperationException($"The sample import isn't ready: {draft.BlockingReason}");
+                var switches = Descendants<CheckBox>(flyout).Count(box => box.IsVisible && box.DataContext is DayRowViewModel { IsOther: true });
+                if (switches != (language == Loc.Slovenian ? 1 : 0)) throw new InvalidOperationException($"The panel shows {switches} new-folder switch(es).");
                 if (!first.HasChosenPhotoFolder || first.PhotoPlaceText != Loc.F("Photos → {0}", "Clients") || !first.ShowsVideoPlace)
                 {
                     throw new InvalidOperationException($"The new project's places are wrong: “{first.PhotoPlaceText}”, “{first.VideoPlaceText}”.");
@@ -132,6 +144,11 @@ internal static class SelfTest
                     || !shootButtons.Any(button => button is not HoldButton && button.DataContext is ShootViewModel { IsClosed: true }))
                 {
                     throw new InvalidOperationException("Settings doesn't list the multi-day shoots with their buttons.");
+                }
+                // A remembered Other… folder shows where it goes.
+                if (!Descendants<TextBlock>(settings).Any(text => text.IsVisible && text.DataContext is ShootViewModel { Detail.Length: > 0 } shoot && text.Text == shoot.Detail))
+                {
+                    throw new InvalidOperationException("Settings doesn't show the remembered folder's path.");
                 }
                 // The lower sections (After importing, General, Memory) are below the fold.
                 if (Descendants<ScrollViewer>(settings).FirstOrDefault() is { ScrollableHeight: > 0 } settingsScroller)

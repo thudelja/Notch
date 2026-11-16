@@ -297,33 +297,64 @@ private struct DayRow: View {
             case .newInShoot(let id):
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
-                if let shoot = draft.shoot(id) {
-                    let doneTitle = String(localized: "“\(shoot.name)” is finished after this import")
-                    if draft.finishedShoots.contains(id) {
-                        Label(doneTitle, systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        HoldToFinishButton(title: String(localized: "Hold to finish “\(shoot.name)”"), doneTitle: doneTitle) {
-                            model.finishShoot(id)
-                            draft.finishedShoots.insert(id)
-                        }
-                        .id(id)
-                    }
-                }
+                finishRow(id)
             case .newProject:
                 TextField("New project name", text: name)
                     .textFieldStyle(.roundedBorder)
                 if draft.hasPhotos { placeRow(.photo) }
                 if draft.hasVideos { placeRow(.video) }
+            case .other:
+                otherRows(changeable: true)
+            case .inFolder(let id):
+                otherRows(changeable: false)
+                finishRow(id)
             default:
                 EmptyView()
             }
         }
     }
 
-    /// "Photos → Projects  [Change…]": where a new project's photos or videos go.
-    private func placeRow(_ branch: FolderStructure.Branch) -> some View {
+    /// Other…, picked now (`changeable`) or remembered: the name, the new-folder switch and where
+    /// the photos and videos go.
+    @ViewBuilder
+    private func otherRows(changeable: Bool) -> some View {
+        if draft.newFolder(for: summary.day) {
+            TextField("New project name", text: name)
+                .textFieldStyle(.roundedBorder)
+        } else {
+            TextField("New project name (optional)", text: name)
+                .textFieldStyle(.roundedBorder)
+        }
+        Toggle("New folder for this project", isOn: newFolder)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .help(String(localized: "Off: the files go straight into the folders you picked, in their camera folders."))
+        if draft.hasPhotos { placeRow(.photo, changeable: changeable, resettable: false) }
+        if draft.hasVideos { placeRow(.video, changeable: changeable, resettable: changeable) }
+    }
+
+    /// A multi-day shoot's or remembered folder's hold-to-finish button.
+    @ViewBuilder
+    private func finishRow(_ id: UUID) -> some View {
+        if let shoot = draft.shoot(id) {
+            let doneTitle = String(localized: "“\(shoot.name)” is finished after this import")
+            if draft.finishedShoots.contains(id) {
+                Label(doneTitle, systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                HoldToFinishButton(title: String(localized: "Hold to finish “\(shoot.name)”"), doneTitle: doneTitle) {
+                    model.finishShoot(id)
+                    draft.finishedShoots.insert(id)
+                }
+                .id(id)
+            }
+        }
+    }
+
+    /// "Photos → Projects  [Change…]": where a new project's photos or videos go. A remembered
+    /// folder's places can't be changed; Other…'s photos can't go back to the default.
+    private func placeRow(_ branch: FolderStructure.Branch, changeable: Bool = true, resettable: Bool = true) -> some View {
         let chosen = draft.folder(for: branch, day: summary.day)
         let place = chosen?.lastPathComponent ?? model.defaultRoot(branch).lastPathComponent
         return HStack(spacing: 6) {
@@ -336,7 +367,7 @@ private struct DayRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 4)
-            if chosen != nil {
+            if chosen != nil, changeable, resettable {
                 Button {
                     draft.setFolder(nil, for: branch, day: summary.day)
                 } label: {
@@ -345,12 +376,14 @@ private struct DayRow: View {
                 .buttonStyle(.borderless)
                 .help(String(localized: "Back to the default folder"))
             }
-            Button("Change…") {
-                // After the menu has closed, so the folder panel can take focus.
-                let day = summary.day
-                DispatchQueue.main.async { [model, draft] in model.chooseFolder(for: branch, day: day, in: draft) }
+            if changeable {
+                Button("Change…") {
+                    // After the menu has closed, so the folder panel can take focus.
+                    let day = summary.day
+                    DispatchQueue.main.async { [model, draft] in model.chooseFolder(for: branch, day: day, in: draft) }
+                }
+                .controlSize(.small)
             }
-            .controlSize(.small)
         }
     }
 
@@ -366,7 +399,21 @@ private struct DayRow: View {
     private var choice: Binding<DayChoice> {
         Binding(
             get: { draft.choice(for: summary.day) },
-            set: { draft.setChoice($0, for: summary.day) }
+            set: { [model, draft, day = summary.day] newChoice in
+                let wasOther = draft.choice(for: day) == .other
+                draft.setChoice(newChoice, for: day)
+                // Other… asks for its folders, once the menu has closed.
+                if newChoice == .other, !wasOther {
+                    DispatchQueue.main.async { model.chooseOther(for: day, in: draft) }
+                }
+            }
+        )
+    }
+
+    private var newFolder: Binding<Bool> {
+        Binding(
+            get: { draft.newFolder(for: summary.day) },
+            set: { draft.setNewFolder($0, for: summary.day) }
         )
     }
 

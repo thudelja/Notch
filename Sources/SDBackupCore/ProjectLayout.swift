@@ -19,7 +19,8 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     /// with the project so changing the projects folder's structure never moves existing projects.
     public var structure: FolderStructure?
     /// For photos put in a folder the user chose: the project folder's path below its projects
-    /// folder, e.g. ["2026", "Clients", "02.11.2026 Ana"]. Nil for photos laid out by the structure.
+    /// folder, e.g. ["2026", "Clients", "02.11.2026 Ana"]; [] when the project folder is the projects
+    /// folder itself (Other… without a new folder, 1.4). Nil for photos laid out by the structure.
     /// (Projects made before 1.3 put their videos there too.)
     public var folder: [String]?
     /// The projects folder holding this project's videos, when they go to another folder than the
@@ -29,7 +30,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
     /// projects, whose videos follow `structure` (and `folder`) as before.
     public var videoStructure: FolderStructure?
     /// For videos put in a folder the user chose: the project folder's path below the videos'
-    /// projects folder.
+    /// projects folder; [] for the projects folder itself.
     public var videoFolder: [String]?
     /// The multi-day shoot (e.g. "AMD Koledar 2026") the project belongs to: its folder takes the
     /// project folder's place in the structures, and the project folder goes inside it.
@@ -65,10 +66,10 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         self.startDay = startDay
         self.libraryID = libraryID
         self.structure = structure == FolderStructure.standard ? nil : structure
-        self.folder = folder?.isEmpty == true ? nil : folder
+        self.folder = folder
         self.videoLibraryID = videoLibraryID == libraryID ? nil : videoLibraryID
         self.videoStructure = videoStructure
-        self.videoFolder = videoFolder?.isEmpty == true ? nil : videoFolder
+        self.videoFolder = videoFolder
         let trimmedSeries = series?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.series = trimmedSeries.isEmpty ? nil : trimmedSeries
         self.rootPath = rootPath
@@ -87,7 +88,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
         let structure = (try? container.decodeIfPresent(FolderStructure.self, forKey: .structure)) ?? nil
         self.structure = structure?.isValid == true ? structure : nil
         let folder = (try? container.decodeIfPresent([String].self, forKey: .folder)) ?? nil
-        self.folder = folder?.isEmpty == true ? nil : folder
+        self.folder = folder
         videoLibraryID = (try? container.decodeIfPresent(UUID.self, forKey: .videoLibraryID)) ?? nil
         // A video structure this version can't read is read as the standard one; the project stays a
         // 1.3 one (whose videos don't follow the photos' structure).
@@ -98,7 +99,7 @@ public struct ProjectInfo: Codable, Hashable, Identifiable, Sendable {
             videoStructure = nil
         }
         let videoFolder = (try? container.decodeIfPresent([String].self, forKey: .videoFolder)) ?? nil
-        self.videoFolder = videoFolder?.isEmpty == true ? nil : videoFolder
+        self.videoFolder = videoFolder
         let series = ((try? container.decodeIfPresent(String.self, forKey: .series)) ?? nil)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         self.series = series?.isEmpty == true ? nil : series

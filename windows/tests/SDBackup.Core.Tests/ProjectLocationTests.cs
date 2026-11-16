@@ -217,6 +217,7 @@ public sealed class ProjectLocationTests : Sandbox
         Assert.Equal(Under(_projects, "2026", "Video", "11 November", "02.11.2026 Ana Wedding"), ProjectLayout.VideoFolder(project));
         // A videos library equal to the project's own library means "the same folder".
         Assert.Null((project with { VideoLibraryId = project.LibraryId }).VideoLibraryId);
-        Assert.Null(new ProjectInfo { Folder = [] }.Folder);
+        // Since 1.4 an empty folder path means "the projects folder itself", not "no chosen folder".
+        Assert.Empty(new ProjectInfo { Folder = [] }.Folder!);
     }
 }

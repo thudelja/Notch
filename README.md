@@ -111,6 +111,12 @@ with, and adding a day to it still puts the files in its folder.
    - **New in “AMD Koledar 2026”**: the next day of an open multi-day shoot.
    - **Same as** another new project on this card
    - one of your **last two projects**
+   - **Other…**: put the project in any folder, without changing your settings. Notch asks for the
+     photos' folder and, if the card has videos, the videos' folder (cancel to keep them in their usual
+     place). With **New folder for this project** on, it makes `02.11.2026 Name/R5/…` in the folder you
+     picked (videos: `02.11.2026 Name/Media/R5/…`); off, the files go straight in (`R5/…`,
+     `Media/R5/…`) and the name is optional. Notch remembers the folder: next time it's offered as
+     **In “Folder”**, and it's finished and listed like a [multi-day shoot](#multi-day-shoots).
    - **Skip for now**
 
    By default, every date goes into one new project. Below the dates, check the **camera folder

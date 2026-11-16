@@ -131,19 +131,27 @@
 
                                             <!-- A new project, on its own or in a multi-day shoot -->
                                             <StackPanel Margin="0,8,0,0" Visibility="{Binding AsksForName, Converter={StaticResource BoolToVisible}}">
-                                                <TextBlock Style="{StaticResource SmallText}" Text="{l:T 'Name of the new project'}" Margin="0,0,0,4" />
-                                                <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="{l:T 'Name of the new project'}"
+                                                <TextBlock Style="{StaticResource SmallText}" Text="{Binding NameLabel}" Margin="0,0,0,4" />
+                                                <TextBox Style="{StaticResource FieldBox}" AutomationProperties.Name="{Binding NameLabel}"
                                                          Text="{Binding ProjectName, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
+
+                                            <!-- Other…: a "date name" folder in the picked folders, or the files straight into them -->
+                                            <CheckBox Style="{StaticResource ToggleSwitch}" Margin="0,8,0,0" IsChecked="{Binding NewFolder}"
+                                                      Visibility="{Binding IsOther, Converter={StaticResource BoolToVisible}}"
+                                                      ToolTip="{l:T 'Off: the files go straight into the folders you picked, in their camera folders.'}">
+                                                <TextBlock Style="{StaticResource BodyText}" Text="{l:T 'New folder for this project'}" />
+                                            </CheckBox>
 
                                             <!-- Where a new project's photos and videos go: "Photos → Projects  [Change…]" -->
                                             <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsPhotoPlace, Converter={StaticResource BoolToVisible}}">
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="{l:T 'Change…'}"
                                                         ToolTip="{l:T 'Choose the folder this project’s photos go in'}"
-                                                        AutomationProperties.Name="{l:T 'Change where the photos go'}" Command="{Binding ChangePhotosCommand}" />
+                                                        AutomationProperties.Name="{l:T 'Change where the photos go'}" Command="{Binding ChangePhotosCommand}"
+                                                        Visibility="{Binding CanChangePlaces, Converter={StaticResource BoolToVisible}}" />
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
                                                         ToolTip="{l:T 'Back to the default folder'}" AutomationProperties.Name="{l:T 'Photos back to the default folder'}"
-                                                        Visibility="{Binding HasChosenPhotoFolder, Converter={StaticResource BoolToVisible}}"
+                                                        Visibility="{Binding CanResetPhotoFolder, Converter={StaticResource BoolToVisible}}"
                                                         Command="{Binding ResetPhotosCommand}">
                                                     <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
                                                 </Button>
@@ -154,10 +162,11 @@
                                             <DockPanel Margin="0,6,0,0" Visibility="{Binding ShowsVideoPlace, Converter={StaticResource BoolToVisible}}">
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Padding="10,3" FontSize="12" Content="{l:T 'Change…'}"
                                                         ToolTip="{l:T 'Choose the folder this project’s videos go in'}"
-                                                        AutomationProperties.Name="{l:T 'Change where the videos go'}" Command="{Binding ChangeVideosCommand}" />
+                                                        AutomationProperties.Name="{l:T 'Change where the videos go'}" Command="{Binding ChangeVideosCommand}"
+                                                        Visibility="{Binding CanChangePlaces, Converter={StaticResource BoolToVisible}}" />
                                                 <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="24" Height="24" Margin="0,0,4,0"
                                                         ToolTip="{l:T 'Back to the default folder'}" AutomationProperties.Name="{l:T 'Videos back to the default folder'}"
-                                                        Visibility="{Binding HasChosenVideoFolder, Converter={StaticResource BoolToVisible}}"
+                                                        Visibility="{Binding CanResetVideoFolder, Converter={StaticResource BoolToVisible}}"
                                                         Command="{Binding ResetVideosCommand}">
                                                     <TextBlock Style="{StaticResource IconText}" FontSize="10" Text="&#xE7A7;" />
                                                 </Button>
@@ -166,8 +175,8 @@
                                                 <TextBlock Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="0,0,6,0" Text="{Binding VideoPlaceText}" />
                                             </DockPanel>
 
-                                            <!-- A day in an open multi-day shoot: hold to finish the shoot -->
-                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding IsInShoot, Converter={StaticResource BoolToVisible}}">
+                                            <!-- A day in an open multi-day shoot or a remembered folder: hold to finish it -->
+                                            <StackPanel Margin="0,8,0,0" Visibility="{Binding ShowsFinish, Converter={StaticResource BoolToVisible}}">
                                                 <local:HoldButton HorizontalAlignment="Left" Padding="10,4" FontSize="12"
                                                                   Text="{Binding FinishShootTitle}" AutomationProperties.Name="{Binding FinishShootTitle}"
                                                                   Command="{Binding FinishShootCommand}"

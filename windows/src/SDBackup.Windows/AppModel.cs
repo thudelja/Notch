@@ -473,6 +473,7 @@ public sealed class AppModel : ObservableObject, IDisposable
         var (started, continued) = draft.ShootsUsed;
         foreach (var name in started) Library.Shoots.Start(name);
         foreach (var name in continued) Library.Shoots.MarkUsed(name);
+        foreach (var folder in draft.FoldersUsed) Library.Shoots.Remember(folder);
         _drafts.Remove(draft);
         DraftsChanged();
         if (plan.Items.Count == 0) return;
@@ -960,7 +961,8 @@ public sealed class AppModel : ObservableObject, IDisposable
     }
 
     /// <summary>What import drafts ask this model for.</summary>
-    private ImportDraftServices DraftServices => new(ChooseFolder, branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot);
+    private ImportDraftServices DraftServices =>
+        new(ChooseFolder, branch => Format.FolderName(PathUtil.Normalize(DefaultRoot(branch))), FinishShoot, ChooseOther);
 
     /// <summary>
     /// Import panel › a new project's "Change…": asks for the folder its photos or videos go in. The folder of a project
@@ -983,9 +985,53 @@ public sealed class AppModel : ObservableObject, IDisposable
         }
         if (folder is null) return;
         Library.RefreshLocations();
-        if (Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
+        // Other…'s folders are used as picked, even a known project's folder.
+        if (!draft.ChoiceFor(day).IsOther && Library.ProjectAtFolder(folder) is { } project) draft.UseProject(project, day);
         else draft.SetFolder(day, branch, PathUtil.Normalize(folder));
     }
+
+    /// <summary>
+    /// Import panel › Other…: asks for the folder this day's photos go in, then, if the card has videos, the videos' folder
+    /// (closing that one leaves them in their usual place). Runs once the project picker has closed.
+    /// </summary>
+    private void ChooseOther(ImportDraftViewModel draft, ShootDay day) =>
+        _dispatcher.BeginInvoke(() =>
+        {
+            string? photos = null, videos = null;
+            PanelDialogOpen?.Invoke(true);
+            try
+            {
+                if (draft.HasPhotos)
+                {
+                    photos = _dialogs.PickFolder(
+                        Loc.F("Where should the photos of {0} go? Notch makes the project’s folder (date and name) in it, or puts them straight in.", day.FolderDate),
+                        DefaultRoot(FolderStructure.Branch.Photo));
+                    if (photos is null)
+                    {
+                        draft.CancelOther(day);
+                        return;
+                    }
+                }
+                if (draft.HasVideos)
+                {
+                    videos = _dialogs.PickFolder(
+                        draft.HasPhotos
+                            ? Loc.T("Where should the videos go? Close this window to keep them in their usual place.")
+                            : Loc.F("Where should the videos of {0} go? Notch makes the project’s folder (date and name) in it, or puts them straight in.", day.FolderDate),
+                        photos ?? DefaultRoot(FolderStructure.Branch.Video));
+                    if (videos is null && !draft.HasPhotos)
+                    {
+                        draft.CancelOther(day);
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                PanelDialogOpen?.Invoke(false);
+            }
+            draft.SetOther(day, photos is null ? null : PathUtil.Normalize(photos), videos is null ? null : PathUtil.Normalize(videos));
+        });
 
     // ------------------------------------------------------------------ Multi-day shoots
 
@@ -1123,8 +1169,9 @@ public sealed class AppModel : ObservableObject, IDisposable
             new() { Name = "Portraits Maja", StartDay = new ShootDay(2026, 10, 9), RootPath = "" },
         };
         Library.Shoots.Finish(Library.Shoots.Start("Poroka Novak 2025").Id);
-        var shoot = Library.Shoots.Start("AMD Koledar 2026");
-        var draft = new ImportDraftViewModel(volume, analysis, recent, [shoot], names, _ => { }, _ => { }, ImportDraftServices.None);
+        Library.Shoots.Remember(new OtherFolder(Path.Combine(Settings.ProjectsFolder, "Clients"), null, NewFolder: false));
+        Library.Shoots.Start("AMD Koledar 2026");
+        var draft = new ImportDraftViewModel(volume, analysis, recent, Library.Shoots.Open, names, _ => { }, _ => { }, ImportDraftServices.None);
         draft.Days[0].ProjectName = "Ana Wedding";
         _drafts.Add(draft);
         _drafts.Add(draft);

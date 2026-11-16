@@ -242,6 +242,7 @@ final class ProjectLocationTests: XCTestCase {
         // A videos library equal to the project's own library means "the same folder".
         let libraryID = UUID()
         XCTAssertNil(ProjectInfo(name: "x", startDay: day, libraryID: libraryID, videoLibraryID: libraryID).videoLibraryID)
-        XCTAssertNil(ProjectInfo(name: "x", startDay: day, folder: []).folder)
+        // Since 1.4 an empty folder path means "the projects folder itself", not "no chosen folder".
+        XCTAssertEqual(ProjectInfo(name: "x", startDay: day, folder: []).folder, [])
     }
 }

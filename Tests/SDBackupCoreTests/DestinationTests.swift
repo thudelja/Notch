@@ -248,6 +248,34 @@ final class DestinationTests: XCTestCase {
 
     // MARK: - Saved records
 
+    func testAChosenFolderCanBeTheProjectFolderItself() throws {
+        // Other… without a new folder (1.4): the files go straight into the folders the user picked, here outside every
+        // projects folder, so each picked folder is its own projects folder and the project's folder path is empty.
+        var project = makeProject()
+        project.folder = []
+        project.videoLibraryID = UUID()
+        project.videoRootPath = videos.path
+        project.videoFolder = []
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: project, camera: "R5").path, under(projects, ["R5"]))
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .video, project: project, camera: "R5").path, under(videos, ["Media", "R5"]))
+
+        // No chosen folder (nil) is a different project from one in the projects folder itself ([]).
+        var laidOut = project
+        laidOut.folder = nil
+        XCTAssertNotEqual(laidOut, project)
+
+        // Saved and read back, the empty path stays empty rather than becoming "laid out by the structure".
+        let libraryID = UUID()
+        project.libraryID = libraryID
+        try LibraryManifest(libraryID: libraryID, projects: [project]).write(to: projects)
+        let json = try String(contentsOf: LibraryManifest.url(in: projects), encoding: .utf8)
+        XCTAssertTrue(json.contains("\"folder\" : ["), json)
+        var read = try XCTUnwrap(LibraryManifest.read(from: projects)?.projects.first)
+        XCTAssertEqual(read.folder, [])
+        read.rootPath = projects.path
+        XCTAssertEqual(ProjectLayout.targetDirectory(kind: .photo, project: read, camera: "R5").path, under(projects, ["R5"]))
+    }
+
     func testNewFieldsRoundTripThroughTheManifest() throws {
         let libraryID = UUID()
         var project = makeProject(series: "AMD Koledar 2026")

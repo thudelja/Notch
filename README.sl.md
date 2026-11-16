@@ -114,6 +114,13 @@ je nastal, in ko mu dodate dan, gredo datoteke še vedno v njegovo mapo.
    - **Nov v „AMD Koledar 2026“**: naslednji dan odprtega večdnevnega snemanja.
    - **Enako kot** drug nov projekt na tej kartici
    - enega od **zadnjih dveh projektov**
+   - **Drugo …**: projekt postavite v katero koli mapo, ne da bi spremenili nastavitve. Notch vpraša za
+     mapo za fotografije in, če so na kartici videoposnetki, za mapo za videoposnetke (s Prekliči
+     ostanejo na običajnem mestu). Ko je **Nova mapa za ta projekt** vklopljena, v izbrani mapi naredi
+     `02.11.2026 Ime/R5/…` (videoposnetki: `02.11.2026 Ime/Posnetki/R5/…`); ko je izklopljena, gredo
+     datoteke naravnost vanjo (`R5/…`, `Posnetki/R5/…`), ime pa je neobvezno. Notch si mapo zapomni:
+     naslednjič jo ponudi kot **V „Mapa“**, zaključi in navede pa se kot
+     [večdnevno snemanje](#večdnevna-snemanja).
    - **Zaenkrat preskoči**
 
    Privzeto gredo vsi datumi v en nov projekt. Pod datumi preverite **imena map fotoaparatov**.

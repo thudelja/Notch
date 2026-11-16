@@ -21,6 +21,10 @@ public enum DayChoiceKind
     NewInShoot,
     /// <summary>A new multi-day shoot, with this day's project as its first.</summary>
     NewShoot,
+    /// <summary>A new project in folders picked with Other… (1.4).</summary>
+    Other,
+    /// <summary>A new project in a remembered Other… folder (1.4).</summary>
+    InFolder,
     /// <summary>The same new project as another day on this card.</summary>
     SameAs,
     Existing,
@@ -34,21 +38,29 @@ public sealed record DayChoice(DayChoiceKind Kind, ShootDay? Owner = null, Guid?
     public static readonly DayChoice NewProject = new(DayChoiceKind.NewProject);
     public static readonly DayChoice NewShoot = new(DayChoiceKind.NewShoot);
     public static readonly DayChoice Skip = new(DayChoiceKind.Skip);
+    public static readonly DayChoice Other = new(DayChoiceKind.Other);
     public static DayChoice NewInShoot(Guid shootId) => new(DayChoiceKind.NewInShoot, ShootId: shootId);
+    public static DayChoice InFolder(Guid shootId) => new(DayChoiceKind.InFolder, ShootId: shootId);
     public static DayChoice SameAs(ShootDay owner) => new(DayChoiceKind.SameAs, Owner: owner);
     public static DayChoice Existing(Guid projectId) => new(DayChoiceKind.Existing, ProjectId: projectId);
 
     /// <summary>A new project of any kind; days can be "same as" it.</summary>
-    public bool IsNewProject => Kind is DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot;
+    public bool IsNewProject => Kind is DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot
+        or DayChoiceKind.Other or DayChoiceKind.InFolder;
+
+    /// <summary>In folders picked with Other…, now or before.</summary>
+    public bool IsOther => Kind is DayChoiceKind.Other or DayChoiceKind.InFolder;
 }
 
 /// <summary>What an import draft asks the app for: folder pickers, default folder names and finishing a shoot.</summary>
+/// <param name="ChooseOther">Other…: asks for the folders (later, once the picker has closed) and calls <see cref="ImportDraftViewModel.SetOther"/>.</param>
 public sealed record ImportDraftServices(
     Action<ImportDraftViewModel, ShootDay, FolderStructure.Branch> ChooseFolder,
     Func<FolderStructure.Branch, string> DefaultPlaceName,
-    Action<Guid> FinishShoot)
+    Action<Guid> FinishShoot,
+    Action<ImportDraftViewModel, ShootDay> ChooseOther)
 {
-    public static readonly ImportDraftServices None = new((_, _, _) => { }, _ => "Projects", _ => { });
+    public static readonly ImportDraftServices None = new((_, _, _) => { }, _ => "Projects", _ => { }, (_, _) => { });
 }
 
 /// <summary>An entry in a day's project picker. Kept (and its title updated) across refreshes so the picker keeps its selection.</summary>
@@ -76,6 +88,8 @@ public sealed class ImportDraftViewModel : ObservableObject
     private readonly Dictionary<ShootDay, string> _photoFolders = new();
     private readonly Dictionary<ShootDay, string> _videoFolders = new();
     private readonly HashSet<Guid> _finishedShoots = [];
+    private readonly Dictionary<ShootDay, bool> _newFolder = new();
+    private readonly Dictionary<ShootDay, DayChoice> _beforeOther = new();
 
     public ImportDraftViewModel(
         VolumeInfo volume,
@@ -156,6 +170,14 @@ public sealed class ImportDraftViewModel : ObservableObject
         var previous = ChoiceFor(day);
         if (previous == choice) return;
         _choices[day] = choice;
+        if (choice.Kind == DayChoiceKind.Other)
+        {
+            // Other… asks for its folders; cancelling goes back to the day's previous choice.
+            _beforeOther[day] = previous;
+            _photoFolders.Remove(day);
+            _videoFolders.Remove(day);
+            _services.ChooseOther(this, day);
+        }
         // Days that pointed at this day's new project need a new answer.
         if (previous.IsNewProject && !choice.IsNewProject)
         {
@@ -196,8 +218,65 @@ public sealed class ImportDraftViewModel : ObservableObject
         RefreshOptions();
     }
 
-    public string? FolderFor(ShootDay day, FolderStructure.Branch branch) =>
-        (branch == FolderStructure.Branch.Photo ? _photoFolders : _videoFolders).GetValueOrDefault(day);
+    public string? FolderFor(ShootDay day, FolderStructure.Branch branch)
+    {
+        // A remembered Other… folder brings its own folders.
+        if (ChoiceFor(day) is { Kind: DayChoiceKind.InFolder, ShootId: Guid id } && Shoot(id)?.Folder is { } remembered)
+        {
+            return branch == FolderStructure.Branch.Photo ? remembered.Photos : remembered.Videos;
+        }
+        return (branch == FolderStructure.Branch.Photo ? _photoFolders : _videoFolders).GetValueOrDefault(day);
+    }
+
+    /// <summary>Other…'s folders were picked: <paramref name="photos"/> for photos and <paramref name="videos"/> for videos (null: their usual place).</summary>
+    public void SetOther(ShootDay day, string? photos, string? videos)
+    {
+        if (ChoiceFor(day).Kind != DayChoiceKind.Other) return;
+        if (photos is null) _photoFolders.Remove(day); else _photoFolders[day] = photos;
+        if (videos is null) _videoFolders.Remove(day); else _videoFolders[day] = videos;
+        RefreshOptions();
+    }
+
+    /// <summary>Other…'s first folder picker was closed: the day goes back to what it was.</summary>
+    public void CancelOther(ShootDay day)
+    {
+        if (ChoiceFor(day).Kind != DayChoiceKind.Other || FolderFor(day, FolderStructure.Branch.Photo) is not null
+            || FolderFor(day, FolderStructure.Branch.Video) is not null) return;
+        SetChoice(day, _beforeOther.GetValueOrDefault(day) ?? DayChoice.Unassigned);
+    }
+
+    /// <summary>Other…: a new "date name" folder in the picked folders, or the files straight into them.</summary>
+    public bool NewFolderFor(ShootDay day) =>
+        _newFolder.TryGetValue(day, out var value) ? value
+        : ChoiceFor(day) is { Kind: DayChoiceKind.InFolder, ShootId: Guid id } && Shoot(id)?.Folder is { } remembered ? remembered.NewFolder
+        : true;
+
+    public void SetNewFolder(ShootDay day, bool value)
+    {
+        _newFolder[day] = value;
+        RefreshOptions();
+    }
+
+    /// <summary>The project's name: typed, or, straight into a picked folder, the folder's name.</summary>
+    internal string ProjectNameFor(ShootDay day)
+    {
+        var typed = NameFor(day);
+        if (typed.Length > 0 || !ChoiceFor(day).IsOther || NewFolderFor(day)) return typed;
+        return OtherFolderFor(day) is { } folder ? folder.Name : "";
+    }
+
+    /// <summary>The Other… folders a day goes to, as they'll be remembered.</summary>
+    internal OtherFolder? OtherFolderFor(ShootDay day)
+    {
+        if (!ChoiceFor(day).IsOther) return null;
+        var photos = FolderFor(day, FolderStructure.Branch.Photo);
+        var videos = FolderFor(day, FolderStructure.Branch.Video);
+        return photos is null && videos is null ? null : new OtherFolder(photos, videos, NewFolderFor(day));
+    }
+
+    /// <summary>Other… folders this import uses, to remember (or remember again) after it starts.</summary>
+    public IReadOnlyList<OtherFolder> FoldersUsed =>
+        Days.Select(row => OtherFolderFor(row.Day)).OfType<OtherFolder>().ToList();
 
     /// <summary>"Photos → Projects": where a new project's photos or videos go.</summary>
     internal string PlaceText(ShootDay day, FolderStructure.Branch branch)
@@ -229,7 +308,7 @@ public sealed class ImportDraftViewModel : ObservableObject
             {
                 var choice = ChoiceFor(row.Day);
                 if (choice.Kind == DayChoiceKind.NewShoot) started.Add(row.ShootName.Trim());
-                if (choice is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } && Shoot(id) is { } shoot) continued.Add(shoot.Name);
+                if (choice is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } && Shoot(id) is { Folder: null } shoot) continued.Add(shoot.Name);
             }
             return (started, continued);
         }
@@ -252,7 +331,12 @@ public sealed class ImportDraftViewModel : ObservableObject
             (DayChoice.Unassigned, Loc.T("Choose a project…")),
             (DayChoice.NewProject, Loc.T("New project")),
         };
-        foreach (var shoot in OpenShoots) options.Add((DayChoice.NewInShoot(shoot.Id), Loc.F("New in “{0}”", shoot.Name)));
+        foreach (var shoot in OpenShoots)
+        {
+            options.Add(shoot.Folder is null
+                ? (DayChoice.NewInShoot(shoot.Id), Loc.F("New in “{0}”", shoot.Name))
+                : (DayChoice.InFolder(shoot.Id), Loc.F("In “{0}”", shoot.Name)));
+        }
         options.Add((DayChoice.NewShoot, Loc.T("New multi-day shoot…")));
         foreach (var row in Days)
         {
@@ -267,6 +351,7 @@ public sealed class ImportDraftViewModel : ObservableObject
                 ? $"{project.Name} · {project.StartDay.FolderDate}"
                 : Loc.F("{0} · {1} (drive not connected)", project.Name, project.StartDay.FolderDate)));
         }
+        options.Add((DayChoice.Other, Loc.T("Other…")));
         options.Add((DayChoice.Skip, Loc.T("Skip for now")));
         return options;
     }
@@ -274,7 +359,7 @@ public sealed class ImportDraftViewModel : ObservableObject
     /// <summary>"Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.</summary>
     private string SameAsTitle(ShootDay owner)
     {
-        var name = NameFor(owner);
+        var name = ProjectNameFor(owner);
         return name.Length == 0 ? Loc.F("Same as the new project on {0}", owner.FolderDate) : Loc.F("Same as “{0}” (new)", name);
     }
 
@@ -306,12 +391,14 @@ public sealed class ImportDraftViewModel : ObservableObject
                         return Loc.F("Choose a project for {0}.", row.Day.FolderDate);
                     case DayChoiceKind.Skip:
                         continue;
+                    case DayChoiceKind.Other when OtherFolderFor(row.Day) is null:
+                        return Loc.F("Choose a folder for {0}.", row.Day.FolderDate);
                     case DayChoiceKind.NewShoot when row.ShootName.Trim().Length == 0:
                         return Loc.F("Type a name for the multi-day shoot ({0}).", row.Day.FolderDate);
-                    case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot when NameFor(row.Day).Length == 0:
+                    case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot or DayChoiceKind.Other or DayChoiceKind.InFolder when ProjectNameFor(row.Day).Length == 0:
                         return Loc.F("Type a name for the new project ({0}).", row.Day.FolderDate);
                     case DayChoiceKind.SameAs when choice.Owner is ShootDay owner
-                                                && (!ChoiceFor(owner).IsNewProject || NameFor(owner).Length == 0):
+                                                && (!ChoiceFor(owner).IsNewProject || ProjectNameFor(owner).Length == 0):
                         return Loc.F("Type a name for the new project ({0}).", owner.FolderDate);
                     case DayChoiceKind.Existing:
                         var project = KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
@@ -341,7 +428,7 @@ public sealed class ImportDraftViewModel : ObservableObject
             var choice = ChoiceFor(row.Day);
             switch (choice.Kind)
             {
-                case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot:
+                case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot or DayChoiceKind.Other or DayChoiceKind.InFolder:
                     AddTo(newProjectDays, row.Day, row.Day);
                     break;
                 case DayChoiceKind.SameAs when choice.Owner is ShootDay owner:
@@ -357,16 +444,17 @@ public sealed class ImportDraftViewModel : ObservableObject
             var ownerChoice = ChoiceFor(owner);
             string? series = ownerChoice switch
             {
-                { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } => Shoot(id)?.Name,
+                { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } when Shoot(id) is { Folder: null } shoot => shoot.Name,
                 { Kind: DayChoiceKind.NewShoot } => Days.FirstOrDefault(d => d.Day == owner)?.ShootName.Trim(),
                 _ => null,
             };
             if (!ownerChoice.IsNewProject) continue;
-            // Folders can be chosen for a plain new project; a shoot's projects go in the shoot's folder.
-            var isPlain = ownerChoice.Kind == DayChoiceKind.NewProject;
-            var project = store.NewProject(NameFor(owner), members.Min(), series,
-                new LibraryStore.Place(photosRoot, isPlain ? FolderFor(owner, FolderStructure.Branch.Photo) : null),
-                new LibraryStore.Place(videosRoot, isPlain ? FolderFor(owner, FolderStructure.Branch.Video) : null));
+            // Folders can be chosen for a plain new project and with Other…; a shoot's projects go in the shoot's folder.
+            var chosen = ownerChoice.Kind == DayChoiceKind.NewProject || ownerChoice.IsOther;
+            var newFolder = !ownerChoice.IsOther || NewFolderFor(owner);
+            var project = store.NewProject(ProjectNameFor(owner), members.Min(), series,
+                new LibraryStore.Place(photosRoot, chosen ? FolderFor(owner, FolderStructure.Branch.Photo) : null, newFolder),
+                new LibraryStore.Place(videosRoot, chosen ? FolderFor(owner, FolderStructure.Branch.Video) : null, newFolder));
             if (project is null) return null;
             foreach (var day in members) result[day] = project;
         }
@@ -446,10 +534,34 @@ public sealed class DayRowViewModel : ObservableObject
     /// <summary>A plain new project: its photos' and videos' folders can be changed.</summary>
     public bool IsPlainNew => _owner.ChoiceFor(Day).Kind == DayChoiceKind.NewProject;
 
+    /// <summary>Other…, picked now or remembered: the folders it goes to, and a new folder or not.</summary>
+    public bool IsOther => _owner.ChoiceFor(Day).IsOther;
+
     /// <summary>The row asks for the new project's name (a new shoot asks for it with the shoot's name).</summary>
-    public bool AsksForName => IsPlainNew || IsInShoot;
-    public bool ShowsPhotoPlace => IsPlainNew && _owner.HasPhotos;
-    public bool ShowsVideoPlace => IsPlainNew && _owner.HasVideos;
+    public bool AsksForName => IsPlainNew || IsInShoot || IsOther;
+
+    /// <summary>Straight into a picked folder, the name may stay empty: the folder's name is used.</summary>
+    public string NameLabel => IsOther && !NewFolder ? Loc.T("Name of the new project (optional)") : Loc.T("Name of the new project");
+
+    public bool ShowsPhotoPlace => (IsPlainNew || IsOther) && _owner.HasPhotos;
+    public bool ShowsVideoPlace => (IsPlainNew || IsOther) && _owner.HasVideos;
+
+    /// <summary>Other…'s photos always go to a picked folder; a new project's can go back to the default.</summary>
+    public bool CanResetPhotoFolder => IsPlainNew && HasChosenPhotoFolder;
+
+    /// <summary>A remembered folder's places are fixed; a new project's and Other…'s can be changed.</summary>
+    public bool CanChangePlaces => IsPlainNew || _owner.ChoiceFor(Day).Kind == DayChoiceKind.Other;
+    public bool CanResetVideoFolder => CanChangePlaces && HasChosenVideoFolder;
+
+    /// <summary>Other…: make a "date name" folder in the picked folders (on), or put the files straight into them.</summary>
+    public bool NewFolder
+    {
+        get => _owner.NewFolderFor(Day);
+        set
+        {
+            if (value != _owner.NewFolderFor(Day)) _owner.SetNewFolder(Day, value);
+        }
+    }
     public string PhotoPlaceText => _owner.PlaceText(Day, FolderStructure.Branch.Photo);
     public string VideoPlaceText => _owner.PlaceText(Day, FolderStructure.Branch.Video);
     public bool HasChosenPhotoFolder => _owner.FolderFor(Day, FolderStructure.Branch.Photo) is not null;
@@ -470,7 +582,8 @@ public sealed class DayRowViewModel : ObservableObject
         }
     }
 
-    private MultiDayShoot? ChosenShoot => _owner.ChoiceFor(Day) is { Kind: DayChoiceKind.NewInShoot, ShootId: Guid id } ? _owner.Shoot(id) : null;
+    private MultiDayShoot? ChosenShoot =>
+        _owner.ChoiceFor(Day) is { Kind: DayChoiceKind.NewInShoot or DayChoiceKind.InFolder, ShootId: Guid id } ? _owner.Shoot(id) : null;
 
     public string FinishShootTitle => ChosenShoot is { } shoot ? Loc.F("Hold to finish “{0}”", shoot.Name) : "";
     public string ShootFinishedText => ChosenShoot is { } shoot ? Loc.F("“{0}” is finished after this import", shoot.Name) : "";
@@ -478,7 +591,10 @@ public sealed class DayRowViewModel : ObservableObject
     /// <summary>The chosen shoot was finished in this panel (it still takes this import).</summary>
     public bool ShootFinished => ChosenShoot is { } shoot && _owner.IsFinished(shoot.Id);
 
-    public bool CanFinishShoot => IsInShoot && !ShootFinished;
+    public bool CanFinishShoot => ChosenShoot is not null && !ShootFinished;
+
+    /// <summary>A shoot, or a remembered folder, that can be finished from this row.</summary>
+    public bool ShowsFinish => ChosenShoot is not null;
 
     /// <summary>The hold-to-finish button's command (it runs after the button was held).</summary>
     public ICommand FinishShootCommand { get; }
@@ -525,6 +641,8 @@ public sealed class DayRowViewModel : ObservableObject
         foreach (var name in new[]
                  {
                      nameof(Choice), nameof(IsNewProject), nameof(IsNewShoot), nameof(IsInShoot), nameof(IsPlainNew), nameof(AsksForName),
+                     nameof(IsOther), nameof(NameLabel), nameof(NewFolder), nameof(CanResetPhotoFolder), nameof(ShowsFinish),
+                     nameof(CanChangePlaces), nameof(CanResetVideoFolder),
                      nameof(ShowsPhotoPlace), nameof(ShowsVideoPlace), nameof(PhotoPlaceText), nameof(VideoPlaceText),
                      nameof(HasChosenPhotoFolder), nameof(HasChosenVideoFolder), nameof(FinishShootTitle),
                      nameof(ShootFinishedText), nameof(ShootFinished), nameof(CanFinishShoot),

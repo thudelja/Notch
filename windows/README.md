@@ -79,8 +79,11 @@ The panel shows, from top to bottom:
 - **Quick settings tiles:** Auto import, Verify and Auto eject. Below them, buttons that open the
   projects folder, Settings and the log.
 - **Import:** one row per shoot date with a project picker (New project, New multi-day shoot…, New in
-  “…” for each open multi-day shoot, Same as another new project, your last two projects, or Skip for
-  now), and the camera folder names. A new project shows **Photos → …** and **Videos → …**: **Change…**
+  “…” for each open multi-day shoot, In “…” for each remembered folder, Same as another new project, your
+  last two projects, Other…, or Skip for now), and the camera folder names. **Other…** puts the project in
+  any folder without changing your settings: it asks for the photos' folder and the videos' folder (close
+  the second to keep videos in their usual place); **New folder for this project** makes the dated folder
+  in it, or, switched off, puts the files straight in. The folder is remembered as **In “Folder”**. A new project shows **Photos → …** and **Videos → …**: **Change…**
   picks another folder for its photos or its videos, and Notch makes the project's dated folder inside
   it. Choosing the folder of a project Notch already knows adds the date to that project. A day in a
   multi-day shoot has a **Hold to finish** button: hold it for 1.5 seconds when the shoot is done.

@@ -330,6 +330,7 @@ final class AppModel: ObservableObject {
         let shoots = draft.shootsUsed
         for name in shoots.started { library.shoots.start(name) }
         for name in shoots.continued { library.shoots.markUsed(name) }
+        for folder in draft.foldersUsed { library.shoots.remember(folder) }
         drafts.removeAll { $0.id == draft.id }
         guard !plan.items.isEmpty else { return }
 
@@ -669,11 +670,59 @@ final class AppModel: ObservableObject {
         AppActivation.bringToFront()
         guard panel.runModal() == .OK, let url = panel.url else { return }
         library.refreshLocations()
-        if let project = library.project(atFolder: url) {
+        // Other…'s folders are used as picked, even a known project's folder.
+        if !draft.choice(for: day).isOther, let project = library.project(atFolder: url) {
             draft.useProject(project, for: day)
         } else {
             draft.setFolder(url.standardizedFileURL, for: branch, day: day)
         }
+    }
+
+    /// Import panel › Other…: asks for the folder this day's photos go in, then, if the card has
+    /// videos, the videos' folder (cancelling that one leaves them in their usual place). Your
+    /// settings don't change.
+    func chooseOther(for day: ShootDay, in draft: ImportDraft) {
+        var photos: URL?
+        if draft.hasPhotos {
+            photos = pickFolder(
+                title: String(localized: "Where Should the Photos Go?"),
+                message: String(localized: "Choose the folder for the photos of \(day.folderDate). Notch makes the project’s folder (date and name) in it, or puts them straight in."),
+                start: settings.destinationURL
+            )
+            guard photos != nil else {
+                draft.cancelOther(for: day)
+                return
+            }
+        }
+        var videos: URL?
+        if draft.hasVideos {
+            videos = pickFolder(
+                title: String(localized: "Where Should the Videos Go?"),
+                message: draft.hasPhotos
+                    ? String(localized: "Choose the folder for the videos, or click Cancel to keep them in their usual place.")
+                    : String(localized: "Choose the folder for the videos of \(day.folderDate). Notch makes the project’s folder (date and name) in it, or puts them straight in."),
+                start: photos ?? settings.videosURL ?? settings.destinationURL
+            )
+            if videos == nil, !draft.hasPhotos {
+                draft.cancelOther(for: day)
+                return
+            }
+        }
+        draft.setOther(photos: photos?.standardizedFileURL, videos: videos?.standardizedFileURL, for: day)
+    }
+
+    private func pickFolder(title: String, message: String, start: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.title = title
+        panel.message = message
+        panel.prompt = String(localized: "Choose")
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = start
+        AppActivation.bringToFront()
+        return panel.runModal() == .OK ? panel.url : nil
     }
 
     /// The import panel's or Settings' "hold to finish": the shoot leaves the import panel.
