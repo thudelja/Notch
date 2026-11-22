@@ -171,6 +171,21 @@ final class AppModel: ObservableObject {
         connectedVolumes.removeAll { $0.id == url.path }
         library.refreshLocations()
         stopWork(on: url.path, reason: String(localized: "The card was removed before the import finished. Insert it again to finish."))
+        // The notification's path doesn't always match the card's (another spelling of the mount
+        // point, or a card that went while being read): look at what's still mounted, and drop the
+        // cards, import panels and queued work of the ones that are gone.
+        refreshConnectedVolumes()
+        dropRemovedCards()
+    }
+
+    /// Cards whose mount point is gone take their import panel and queued work with them.
+    private func dropRemovedCards() {
+        let gone = Set((drafts.map(\.volume) + analysisQueue + importQueue.map(\.volume))
+            .filter { !FileManager.default.fileExists(atPath: $0.url.path) }
+            .map(\.id))
+        for id in gone {
+            stopWork(on: id, reason: String(localized: "The card was removed before the import finished. Insert it again to finish."))
+        }
     }
 
     private func stopWork(on volumeID: String, reason: String) {
@@ -258,6 +273,9 @@ final class AppModel: ObservableObject {
             if settings.ejectWhenDone, analysis.alreadyImported > 0 {
                 eject(volume, announce: true)
             }
+        case .success where !FileManager.default.fileExists(atPath: volume.url.path):
+            // Ejected just as the reading finished: no import panel for a card that's gone.
+            log.write("“\(volume.name)” was removed while it was being read.")
         case .success(let analysis):
             let draft = makeDraft(for: volume, analysis: analysis)
             drafts.append(draft)

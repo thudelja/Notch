@@ -1,3 +1,4 @@
+import AppKit
 import SDBackupCore
 import SwiftUI
 
@@ -47,6 +48,12 @@ struct MenuContentView: View {
         .padding(ControlCenterMetrics.panelPadding)
         .frame(width: ControlCenterMetrics.panelWidth)
         .onAppear { model.refreshConnectedVolumes() }
+        // When a card's import panel or the card itself goes, the panel gets shorter.
+        .onChange(of: model.drafts.count) { _ in PanelWindow.shrinkToFit() }
+        .onChange(of: model.connectedVolumes.count) { _ in PanelWindow.shrinkToFit() }
+        .onChange(of: model.active == nil) { _ in PanelWindow.shrinkToFit() }
+        .onChange(of: model.analyzing == nil) { _ in PanelWindow.shrinkToFit() }
+        .onChange(of: model.migration == nil) { _ in PanelWindow.shrinkToFit() }
     }
 
     // MARK: - Top row
@@ -700,6 +707,29 @@ private struct HistoryRow: View {
         case .completedWithErrors: return .orange
         case .failed: return .red
         case .cancelled: return .secondary
+        }
+    }
+}
+
+/// The menu bar panel's window. SwiftUI's MenuBarExtra window grows with its content but doesn't
+/// always shrink when the content gets shorter (e.g. after a card is ejected), leaving empty space
+/// until it's reopened.
+@MainActor
+enum PanelWindow {
+    /// Makes the open panel as tall as its content again, keeping its top edge under the menu bar.
+    /// Only ever shrinks it; SwiftUI grows it by itself.
+    static func shrinkToFit() {
+        // After SwiftUI has laid out the new content.
+        DispatchQueue.main.async {
+            guard let window = NSApp.windows.first(where: { $0.isVisible && String(describing: type(of: $0)).contains("MenuBarExtra") }),
+                  let content = window.contentView
+            else { return }
+            let height = content.fittingSize.height
+            guard height > 50, height < window.frame.height - 1 else { return }
+            var frame = window.frame
+            frame.origin.y += frame.height - height
+            frame.size.height = height
+            window.setFrame(frame, display: true)
         }
     }
 }
