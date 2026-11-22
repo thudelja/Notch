@@ -189,6 +189,15 @@ public readonly record struct ShootDay(int Year, int Month, int Day) : IComparab
 
     public static ShootDay FromUtc(DateTime utc) => FromLocal(utc.ToLocalTime());
 
+    /// <summary>Files shot before this hour count as the day before, so a shoot that runs past midnight (an event from 18:00 to 02:00) is one shoot day.</summary>
+    public const int StartHour = 4;
+
+    /// <summary>The shoot day of a file shot at <paramref name="local"/> (local time): its calendar day, or the day before when shot between midnight and <see cref="StartHour"/>.</summary>
+    public static ShootDay OfShot(DateTime local) => FromLocal(local.AddHours(-StartHour));
+
+    /// <summary><see cref="OfShot"/> for a UTC time.</summary>
+    public static ShootDay OfShotUtc(DateTime utc) => OfShot(utc.ToLocalTime());
+
     public int CompareTo(ShootDay other) =>
         Year != other.Year ? Year.CompareTo(other.Year) : Month != other.Month ? Month.CompareTo(other.Month) : Day.CompareTo(other.Day);
 

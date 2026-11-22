@@ -57,6 +57,8 @@ Mapa s projekti ohrani imena, s katerimi je začela, ne glede na to, v katerem j
 - **Leto, mesec in datum** so iz **datuma snemanja**, zapisanega v vsaki datoteki (EXIF pri
   fotografijah, metapodatki posnetka pri videu), sicer iz datuma datoteke. Tudi če uvozite teden
   pozneje, gre vse pod dan, ko je bilo posneto.
+- **Nočna snemanja:** datoteke, posnete pred 4.00, štejejo k prejšnjemu dnevu, zato je dogodek od
+  18.00 do 2.00 en datum.
 - **Foto ali Video** se določi po vrsti datoteke. Kartica z obojim se razdeli na obe veji, pod istim
   imenom projekta. Fotografije in videoposnetki imajo vsak svoj **cilj**: mapo s projekti in
   strukturo (glejte spodaj). Ko gredo oboji v isto mapo, jih mapi `Foto` in `Video` ločita; če imajo
@@ -117,6 +119,8 @@ je nastal, in ko mu dodate dan, gredo datoteke še vedno v njegovo mapo.
      snemanja (`AMD Koledar 2026`) in projekt dneva (`Ana`). Glejte
      [Večdnevna snemanja](#večdnevna-snemanja).
    - **Nov v „AMD Koledar 2026“**: naslednji dan odprtega večdnevnega snemanja.
+   - **Enako kot prejšnji dan**: kamor gre datum nad njim (nov ali obstoječ projekt, večdnevno
+     snemanje ali mapa), za snemanje, ki traja čez polnoč
    - **Enako kot** drug nov projekt na tej kartici
    - enega od **zadnjih dveh projektov**
    - **Zaenkrat preskoči**

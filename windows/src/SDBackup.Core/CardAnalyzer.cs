@@ -156,8 +156,8 @@ public sealed class CardAnalyzer(IMetadataReader? reader = null)
                 model = onlyPhotoCamera.Model;
             }
             var day = info.Date is DateTime shot
-                ? ShootDay.FromLocal(shot)
-                : ShootDay.FromUtc(media.File.CreatedUtc ?? media.File.ModifiedUtc);
+                ? ShootDay.OfShot(shot)
+                : ShootDay.OfShotUtc(media.File.CreatedUtc ?? media.File.ModifiedUtc);
             items.Add(new MediaItem(media.File, media.Kind, day, make, model, media.Sidecars));
         }
 

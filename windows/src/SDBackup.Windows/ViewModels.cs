@@ -176,12 +176,14 @@ public sealed class ImportDraftViewModel : ObservableObject
             _videoFolders.Remove(day);
             _services.ChooseOther(this, day);
         }
-        // Days that pointed at this day's new project need a new answer.
-        if (previous.IsNewProject && !choice.IsNewProject)
+        // Days that follow this day ("Same as") need a new answer when it no longer has a project, and, unless it is
+        // their previous day, when it is no longer a new project (only new projects are offered for days further away).
+        foreach (var (other, value) in _choices.ToList())
         {
-            foreach (var (other, value) in _choices.ToList())
+            if (value != DayChoice.SameAs(day)) continue;
+            if (Root(day) is null || (!choice.IsNewProject && PreviousDay(other) != day))
             {
-                if (value == DayChoice.SameAs(day)) _choices[other] = DayChoice.Unassigned;
+                _choices[other] = DayChoice.Unassigned;
             }
         }
         RefreshOptions();
@@ -313,9 +315,15 @@ public sealed class ImportDraftViewModel : ObservableObject
                 : (DayChoice.InFolder(shoot.Id), Loc.F("In “{0}”", shoot.Name)));
         }
         options.Add((DayChoice.NewShoot, Loc.T("New multi-day shoot…")));
+        // The previous day's project, whatever it is (a new or existing project, a shoot, a folder), right after New project.
+        var previous = PreviousDay(day);
+        if (previous is ShootDay before && Root(before) is ShootDay root && root != day)
+        {
+            options.Insert(2, (DayChoice.SameAs(before), PreviousDayTitle(root)));
+        }
         foreach (var row in Days)
         {
-            if (row.Day != day && ChoiceFor(row.Day).IsNewProject)
+            if (row.Day != day && row.Day != previous && ChoiceFor(row.Day).IsNewProject)
             {
                 options.Add((DayChoice.SameAs(row.Day), SameAsTitle(row.Day)));
             }
@@ -328,6 +336,42 @@ public sealed class ImportDraftViewModel : ObservableObject
         }
         options.Add((DayChoice.Skip, Loc.T("Skip for now")));
         return options;
+    }
+
+    /// <summary>
+    /// The day whose choice a day's "Same as" leads to (following "Same as" days), or null when it leads to no project
+    /// (a skipped or undecided day, or a loop).
+    /// </summary>
+    internal ShootDay? Root(ShootDay day)
+    {
+        for (var step = 0; step <= Days.Count; step++)
+        {
+            var choice = ChoiceFor(day);
+            if (choice is { Kind: DayChoiceKind.SameAs, Owner: ShootDay owner })
+            {
+                day = owner;
+                continue;
+            }
+            return choice.IsNewProject || choice.Kind == DayChoiceKind.Existing ? day : null;
+        }
+        return null;
+    }
+
+    /// <summary>The day listed above this one in the panel (the day before it on the card), if any.</summary>
+    internal ShootDay? PreviousDay(ShootDay day)
+    {
+        var index = Days.ToList().FindIndex(row => row.Day == day);
+        return index > 0 ? Days[index - 1].Day : null;
+    }
+
+    /// <summary>"Same as the previous day (“Ana”)": the project's name when it has one.</summary>
+    private string PreviousDayTitle(ShootDay root)
+    {
+        var choice = ChoiceFor(root);
+        var name = choice.Kind == DayChoiceKind.Existing
+            ? KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId)?.Name ?? ""
+            : ProjectNameFor(root);
+        return name.Length == 0 ? Loc.T("Same as the previous day") : Loc.F("Same as the previous day (“{0}”)", name);
     }
 
     /// <summary>"Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.</summary>
@@ -371,9 +415,16 @@ public sealed class ImportDraftViewModel : ObservableObject
                         return Loc.F("Type a name for the multi-day shoot ({0}).", row.Day.FolderDate);
                     case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot or DayChoiceKind.Other or DayChoiceKind.InFolder when ProjectNameFor(row.Day).Length == 0:
                         return Loc.F("Type a name for the new project ({0}).", row.Day.FolderDate);
-                    case DayChoiceKind.SameAs when choice.Owner is ShootDay owner
-                                                && (!ChoiceFor(owner).IsNewProject || ProjectNameFor(owner).Length == 0):
-                        return Loc.F("Type a name for the new project ({0}).", owner.FolderDate);
+                    case DayChoiceKind.SameAs when choice.Owner is ShootDay owner && Root(owner) is null:
+                        return Loc.F("Choose a project for {0}.", owner.FolderDate);
+                    case DayChoiceKind.SameAs when choice.Owner is ShootDay owner && Root(owner) is ShootDay root
+                                                && ChoiceFor(root).IsNewProject && ProjectNameFor(root).Length == 0:
+                        return Loc.F("Type a name for the new project ({0}).", root.FolderDate);
+                    case DayChoiceKind.SameAs when choice.Owner is ShootDay owner && Root(owner) is ShootDay root
+                                                && ChoiceFor(root) is { Kind: DayChoiceKind.Existing } existing
+                                                && KnownProjects.FirstOrDefault(p => p.Id == existing.ProjectId) is { } followed
+                                                && !IsAvailable(followed, row.Summary):
+                        return Loc.F("“{0}” is on a drive that isn’t connected. Connect it or choose another project.", followed.Name);
                     case DayChoiceKind.Existing:
                         var project = KnownProjects.FirstOrDefault(p => p.Id == choice.ProjectId);
                         if (project is not null && !IsAvailable(project, row.Summary))
@@ -405,8 +456,15 @@ public sealed class ImportDraftViewModel : ObservableObject
                 case DayChoiceKind.NewProject or DayChoiceKind.NewInShoot or DayChoiceKind.NewShoot or DayChoiceKind.Other or DayChoiceKind.InFolder:
                     AddTo(newProjectDays, row.Day, row.Day);
                     break;
-                case DayChoiceKind.SameAs when choice.Owner is ShootDay owner:
-                    AddTo(newProjectDays, owner, row.Day);
+                case DayChoiceKind.SameAs when choice.Owner is ShootDay owner && Root(owner) is ShootDay root:
+                    if (ChoiceFor(root) is { Kind: DayChoiceKind.Existing, ProjectId: Guid followed })
+                    {
+                        if (store.Project(followed) is { } project) result[row.Day] = project;
+                    }
+                    else
+                    {
+                        AddTo(newProjectDays, root, row.Day);
+                    }
                     break;
                 case DayChoiceKind.Existing when choice.ProjectId is Guid id && store.Project(id) is { } project:
                     result[row.Day] = project;

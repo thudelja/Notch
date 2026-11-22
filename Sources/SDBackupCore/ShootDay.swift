@@ -17,6 +17,16 @@ public struct ShootDay: Hashable, Comparable, Codable, Sendable, CustomStringCon
         self.init(year: components.year ?? 1970, month: components.month ?? 1, day: components.day ?? 1)
     }
 
+    /// Files shot before this hour count as the day before, so a shoot that runs past midnight
+    /// (an event from 18:00 to 02:00) is one shoot day.
+    public static let startHour = 4
+
+    /// The shoot day of a file shot at `date`: its calendar day, or the day before when shot
+    /// between midnight and `startHour`.
+    public static func of(_ date: Date, calendar: Calendar = .current) -> ShootDay {
+        ShootDay(calendar.date(byAdding: .hour, value: -startHour, to: date) ?? date, calendar: calendar)
+    }
+
     public static func < (lhs: ShootDay, rhs: ShootDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }

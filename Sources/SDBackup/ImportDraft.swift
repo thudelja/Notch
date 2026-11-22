@@ -14,7 +14,7 @@ enum DayChoice: Hashable {
     case other
     /// A new project in a remembered Other… folder (1.4).
     case inFolder(UUID)
-    /// The same new project as the given (earlier or later) day.
+    /// The same project as the given day: the previous day's, whatever it is, or another day's new project.
     case sameAs(ShootDay)
     case existing(UUID)
     case skip
@@ -120,9 +120,10 @@ final class ImportDraft: ObservableObject, Identifiable {
             photoFolders[day] = nil
             videoFolders[day] = nil
         }
-        // Days that pointed at this day's new project need a new answer.
-        if previous?.isNewProject == true, !choice.isNewProject {
-            for (other, value) in choices where value == .sameAs(day) {
+        // Days that follow this day ("Same as") need a new answer when it no longer has a project, and, unless it is
+        // their previous day, when it is no longer a new project (only new projects are offered for days further away).
+        for (other, value) in choices where value == .sameAs(day) {
+            if root(of: day) == nil || (!choice.isNewProject && previousDay(of: other) != day) {
                 choices[other] = .unassigned
             }
         }
@@ -197,7 +198,12 @@ final class ImportDraft: ObservableObject, Identifiable {
                 : ChoiceOption(choice: .inFolder(shoot.id), title: String(localized: "In “\(shoot.name)”")))
         }
         options.append(ChoiceOption(choice: .newShoot, title: String(localized: "New multi-day shoot…")))
-        for summary in days where summary.day != day && choice(for: summary.day).isNewProject {
+        // The previous day's project, whatever it is (a new or existing project, a shoot, a folder), right after New project.
+        let previous = previousDay(of: day)
+        if let previous, let target = root(of: previous), target != day {
+            options.insert(ChoiceOption(choice: .sameAs(previous), title: previousDayTitle(target)), at: 2)
+        }
+        for summary in days where summary.day != day && summary.day != previous && choice(for: summary.day).isNewProject {
             options.append(ChoiceOption(choice: .sameAs(summary.day), title: sameAsTitle(summary.day)))
         }
         for project in knownProjects {
@@ -208,6 +214,40 @@ final class ImportDraft: ObservableObject, Identifiable {
         }
         options.append(ChoiceOption(choice: .skip, title: String(localized: "Skip for now")))
         return options
+    }
+
+    /// The day listed above this one in the panel (the day before it on the card), if any.
+    func previousDay(of day: ShootDay) -> ShootDay? {
+        guard let index = days.firstIndex(where: { $0.day == day }), index > 0 else { return nil }
+        return days[index - 1].day
+    }
+
+    /// The day whose choice a day's "Same as" leads to (following "Same as" days), or nil when it leads to no project
+    /// (a skipped or undecided day, or a loop).
+    func root(of day: ShootDay) -> ShootDay? {
+        var day = day
+        for _ in 0...days.count {
+            let current = choice(for: day)
+            if case .sameAs(let owner) = current {
+                day = owner
+                continue
+            }
+            if current.isNewProject { return day }
+            if case .existing = current { return day }
+            return nil
+        }
+        return nil
+    }
+
+    /// "Same as the previous day (“Ana”)": the project's name when it has one.
+    private func previousDayTitle(_ root: ShootDay) -> String {
+        var name = projectName(for: root)
+        if case .existing(let id) = choice(for: root) {
+            name = knownProjects.first { $0.id == id }?.name ?? ""
+        }
+        return name.isEmpty
+            ? String(localized: "Same as the previous day")
+            : String(localized: "Same as the previous day (“\(name)”)")
     }
 
     /// "Same as “Ana” (new)", or "Same as the new project on 02.11.2026" before it has a name.
@@ -248,8 +288,15 @@ final class ImportDraft: ObservableObject, Identifiable {
                     return String(localized: "Type a name for the new project (\(summary.day.folderDate)).")
                 }
             case .sameAs(let owner):
-                if !choice(for: owner).isNewProject || projectName(for: owner).isEmpty {
-                    return String(localized: "Type a name for the new project (\(owner.folderDate)).")
+                guard let target = root(of: owner) else {
+                    return String(localized: "Choose a project for \(owner.folderDate).")
+                }
+                if case .existing(let id) = choice(for: target) {
+                    if let project = knownProjects.first(where: { $0.id == id }), !isAvailable(project, for: summary) {
+                        return String(localized: "“\(project.name)” is on a drive that isn’t connected. Connect it or choose another project.")
+                    }
+                } else if projectName(for: target).isEmpty {
+                    return String(localized: "Type a name for the new project (\(target.folderDate)).")
                 }
             case .existing(let id):
                 if let project = knownProjects.first(where: { $0.id == id }), !isAvailable(project, for: summary) {
@@ -275,7 +322,14 @@ final class ImportDraft: ObservableObject, Identifiable {
             case .newProject, .newInShoot, .newShoot, .other, .inFolder:
                 newProjectDays[summary.day, default: []].append(summary.day)
             case .sameAs(let owner):
-                newProjectDays[owner, default: []].append(summary.day)
+                guard let target = root(of: owner) else { break }
+                if case .existing(let id) = choice(for: target) {
+                    if let project = store.project(id: id) {
+                        result[summary.day] = project
+                    }
+                } else {
+                    newProjectDays[target, default: []].append(summary.day)
+                }
             case .existing(let id):
                 if let project = store.project(id: id) {
                     result[summary.day] = project

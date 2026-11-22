@@ -361,4 +361,20 @@ final class DestinationTests: XCTestCase {
         XCTAssertEqual(FolderStructure.defaultFor(language: AppLanguage.english), .standard)
         XCTAssertNotEqual(FolderStructure.standardSlovenian, .standard)
     }
+
+    /// 1.4.2: a shoot that runs past midnight (18:00 to 02:00) is one shoot day.
+    func testFilesShotBeforeFourCountAsTheDayBefore() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Ljubljana")!
+        func shot(_ day: Int, _ hour: Int, _ minute: Int = 0, month: Int = 11, year: Int = 2026) -> Date {
+            calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+        }
+        let evening = ShootDay(year: 2026, month: 11, day: 21)
+        XCTAssertEqual(ShootDay.of(shot(21, 18), calendar: calendar), evening)
+        XCTAssertEqual(ShootDay.of(shot(22, 0, 30), calendar: calendar), evening)
+        XCTAssertEqual(ShootDay.of(shot(22, 2), calendar: calendar), evening)
+        XCTAssertEqual(ShootDay.of(shot(22, 3, 59), calendar: calendar), evening)
+        XCTAssertEqual(ShootDay.of(shot(22, 4), calendar: calendar), ShootDay(year: 2026, month: 11, day: 22))
+        XCTAssertEqual(ShootDay.of(shot(1, 1, 30, month: 1, year: 2027), calendar: calendar), ShootDay(year: 2026, month: 12, day: 31))
+    }
 }

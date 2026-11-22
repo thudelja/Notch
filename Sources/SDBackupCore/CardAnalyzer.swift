@@ -188,7 +188,7 @@ public struct CardAnalyzer {
             items.append(MediaItem(
                 file: media.file,
                 kind: media.kind,
-                day: ShootDay(date),
+                day: ShootDay.of(date),
                 cameraMake: make,
                 cameraModel: model,
                 sidecars: media.sidecars

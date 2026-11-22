@@ -80,7 +80,7 @@ The panel shows, from top to bottom:
   projects folder, Settings and the log.
 - **Import:** one row per shoot date with a project picker (Choose a project…, New project, New
   multi-day shoot…, New in “…” for each open multi-day shoot, In “…” for each remembered folder, Same as
-  another new project, your last two projects, or Skip for now), and the camera folder names. **Choose a
+  the previous day, Same as another new project, your last two projects, or Skip for now), and the camera folder names. **Choose a
   project…** puts the project in
   any folder without changing your settings: it asks for the photos' folder and the videos' folder (close
   the second to keep videos in their usual place); **New folder for this project** makes the dated folder

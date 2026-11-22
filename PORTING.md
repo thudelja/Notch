@@ -329,7 +329,10 @@ nothing are not imported. Sidecars always go into the same folder as their file.
 ### 3.4 Shoot day
 
 The shoot day is the **calendar date on the camera's clock**, a local wall-clock date. Time-zone
-offsets in metadata are ignored on purpose.
+offsets in metadata are ignored on purpose. A shoot day starts at **04:00** (1.4.2): a file shot
+before 04:00 belongs to the day before, so an event from 18:00 to 02:00 is one shoot day
+(`ShootDay.of(date)` on the Mac, `ShootDay.OfShot(local)` on Windows; on New Year's night,
+01:30 on 1 January is 31 December of the previous year).
 
 | Kind | Source, in order |
 | --- | --- |
@@ -374,6 +377,10 @@ per card for files without camera info.
      first day is a new project and every later day is "same as" it.
    - **New in “<shoot>”** for each open multi-day shoot, with a name (section 2.5).
    - **New multi-day shoot…** with the shoot's name and the day's project name.
+   - **Same as the previous day** (1.4.2), for every day but the first, right after New project:
+     the project of the day listed above, whatever it is (new of any kind, existing, a shoot or a
+     folder), following that day's own "Same as". Titled "Same as the previous day (“<name>”)" when
+     the project has a name. Not offered when the day above is skipped or undecided.
    - **Same as** another day's new project on this card (of any kind).
    - One of the **2 most recently used projects**.
    - **Choose a project…** (first; section 2.7) and **In “<folder>”** for each remembered folder.

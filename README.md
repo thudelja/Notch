@@ -58,6 +58,8 @@ Projects/
   folders keep them apart; with a separate folder for videos, those folders are left out.
 - **A project folder** is named after its first shoot day. Adding a later day to an existing
   project puts the files in that same folder.
+- **Night shoots:** files shot before 04:00 count as the day before, so an event from 18:00 to
+  02:00 is one date.
 - **Camera folders** are always created, even when only one camera was used, so files never move
   later and editing projects never lose their media links.
 - **Original file names** are kept. RAW and JPEG stay side by side. If two different files share
@@ -113,6 +115,8 @@ with, and adding a day to it still puts the files in its folder.
      shoot's name (`AMD Koledar 2026`) and the day's project (`Ana`). See
      [Multi-day shoots](#multi-day-shoots).
    - **New in “AMD Koledar 2026”**: the next day of an open multi-day shoot.
+   - **Same as the previous day**: wherever the date above goes (a new or existing project, a
+     multi-day shoot or a folder), for a shoot that runs past midnight
    - **Same as** another new project on this card
    - one of your **last two projects**
    - **Skip for now**

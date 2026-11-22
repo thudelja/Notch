@@ -228,6 +228,8 @@
 "Same as photos" = "Enako kot fotografije";
 "Same as the Mac" = "Kot Mac";
 "Same as the new project on %@" = "Enako kot nov projekt dne %1$@";
+"Same as the previous day" = "Enako kot prejšnji dan";
+"Same as the previous day (“%@”)" = "Enako kot prejšnji dan („%1$@“)";
 "Same as “%@” (new)" = "Enako kot „%1$@“ (nov)";
 "Save" = "Shrani";
 "Settings" = "Nastavitve";
