@@ -8,6 +8,8 @@ enum ControlCenterMetrics {
     static let panelPadding: CGFloat = 12
     static let spacing: CGFloat = 10
     static let cornerRadius: CGFloat = 14
+    /// The panel's own corners, concentric with its tiles' (tile radius plus the padding around them).
+    static let panelCornerRadius: CGFloat = cornerRadius + panelPadding
     static let modulePadding: CGFloat = 10
     /// Width of each half of the two-column top row.
     static let columnWidth: CGFloat = (panelWidth - panelPadding * 2 - spacing) / 2

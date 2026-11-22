@@ -736,11 +736,28 @@ enum PanelWindow {
             frame.origin.y += frame.height - height
             frame.size.height = height
             window.setFrame(frame, display: true)
+            window.invalidateShadow()
         }
+    }
+
+    /// Rounds the panel's corners like Control Center's (MenuBarExtra's window is square): the window
+    /// becomes transparent and its frame view and content are clipped to a continuous rounded rectangle,
+    /// with the shadow following the new shape.
+    static func roundCorners() {
+        guard let window, let content = window.contentView else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        for view in [content, content.superview].compactMap({ $0 }) {
+            view.wantsLayer = true
+            view.layer?.cornerRadius = ControlCenterMetrics.panelCornerRadius
+            view.layer?.cornerCurve = .continuous
+            view.layer?.masksToBounds = true
+        }
+        window.invalidateShadow()
     }
 }
 
-/// Remembers the window the panel is shown in, and fits it when the panel opens.
+/// Remembers the window the panel is shown in, rounds its corners, and fits it when the panel opens.
 struct PanelWindowReader: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { Reader() }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -750,6 +767,7 @@ struct PanelWindowReader: NSViewRepresentable {
             super.viewDidMoveToWindow()
             guard let window else { return }
             PanelWindow.window = window
+            PanelWindow.roundCorners()
             PanelWindow.shrinkToFit()
         }
     }
