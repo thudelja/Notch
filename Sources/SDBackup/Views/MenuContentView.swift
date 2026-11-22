@@ -47,7 +47,11 @@ struct MenuContentView: View {
         }
         .padding(ControlCenterMetrics.panelPadding)
         .frame(width: ControlCenterMetrics.panelWidth)
-        .onAppear { model.refreshConnectedVolumes() }
+        .onAppear {
+            model.refreshConnectedVolumes()
+            PanelWindow.shrinkToFit()
+        }
+        .background(PanelWindowReader())
         // When a card's import panel or the card itself goes, the panel gets shorter.
         .onChange(of: model.drafts.count) { _ in PanelWindow.shrinkToFit() }
         .onChange(of: model.connectedVolumes.count) { _ in PanelWindow.shrinkToFit() }
@@ -712,24 +716,41 @@ private struct HistoryRow: View {
 }
 
 /// The menu bar panel's window. SwiftUI's MenuBarExtra window grows with its content but doesn't
-/// always shrink when the content gets shorter (e.g. after a card is ejected), leaving empty space
-/// until it's reopened.
+/// always shrink when the content gets shorter (when a card's import section collapses into the
+/// import's progress, or a card is ejected), leaving empty space above and below the content until
+/// the panel is reopened.
 @MainActor
 enum PanelWindow {
+    /// The panel's window, found from inside the panel (`PanelWindowReader`).
+    static weak var window: NSWindow?
+
     /// Makes the open panel as tall as its content again, keeping its top edge under the menu bar.
     /// Only ever shrinks it; SwiftUI grows it by itself.
     static func shrinkToFit() {
         // After SwiftUI has laid out the new content.
         DispatchQueue.main.async {
-            guard let window = NSApp.windows.first(where: { $0.isVisible && String(describing: type(of: $0)).contains("MenuBarExtra") }),
-                  let content = window.contentView
-            else { return }
+            guard let window, window.isVisible, let content = window.contentView else { return }
             let height = content.fittingSize.height
             guard height > 50, height < window.frame.height - 1 else { return }
             var frame = window.frame
             frame.origin.y += frame.height - height
             frame.size.height = height
             window.setFrame(frame, display: true)
+        }
+    }
+}
+
+/// Remembers the window the panel is shown in, and fits it when the panel opens.
+struct PanelWindowReader: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Reader() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class Reader: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            PanelWindow.window = window
+            PanelWindow.shrinkToFit()
         }
     }
 }
